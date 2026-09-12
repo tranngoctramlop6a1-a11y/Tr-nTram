@@ -84,8 +84,8 @@ export const ProfileModal: React.FC = () => {
   if (!isProfileModalOpen || !user) return null;
 
   const handleCopyFriendId = () => {
-    if (!user?.friend_id) return;
-    navigator.clipboard.writeText(user.friend_id);
+    if (!user?.id) return;
+    navigator.clipboard.writeText(user.id);
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
   };
@@ -93,7 +93,6 @@ export const ProfileModal: React.FC = () => {
   // Handle image file selection
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    // Reset file input so user can choose the same file again if needed
     e.target.value = '';
 
     if (!file) return;
@@ -101,7 +100,6 @@ export const ProfileModal: React.FC = () => {
     setAvatarError(null);
     setAvatarSuccess(null);
 
-    // Validate file format & size
     const validation = validateAvatarFile(file);
     if (!validation.isValid) {
       setAvatarError(validation.error || 'Ảnh không hợp lệ.');
@@ -109,7 +107,6 @@ export const ProfileModal: React.FC = () => {
     }
 
     try {
-      // Crop & optimize image to high quality 320x320 data URL
       const optimizedDataUrl = await processAndOptimizeAvatar(file, 320);
       setPreviewAvatar(optimizedDataUrl);
       setShowEmojiPicker(false);
@@ -118,7 +115,6 @@ export const ProfileModal: React.FC = () => {
     }
   };
 
-  // Confirm and save previewed avatar to account ID
   const handleConfirmAvatar = async () => {
     if (!previewAvatar) return;
     setIsUploadingAvatar(true);
@@ -136,13 +132,11 @@ export const ProfileModal: React.FC = () => {
     }
   };
 
-  // Cancel preview
   const handleCancelPreview = () => {
     setPreviewAvatar(null);
     setAvatarError(null);
   };
 
-  // Reset to default avatar
   const handleResetToDefault = async () => {
     setIsUploadingAvatar(true);
     setAvatarError(null);
@@ -160,7 +154,6 @@ export const ProfileModal: React.FC = () => {
     }
   };
 
-  // Save selected emoji avatar
   const handleSelectEmojiAvatar = async (emoji: string) => {
     setIsUploadingAvatar(true);
     setAvatarError(null);
@@ -234,7 +227,6 @@ export const ProfileModal: React.FC = () => {
           exit={{ opacity: 0, scale: 0.96, y: 10 }}
           className="relative w-full max-w-md bg-white rounded-3xl p-6 sm:p-7 shadow-2xl border border-gray-100 max-h-[90vh] overflow-y-auto"
         >
-          {/* Close button */}
           <button
             type="button"
             onClick={closeProfileModal}
@@ -243,7 +235,6 @@ export const ProfileModal: React.FC = () => {
             <X className="w-5 h-5" />
           </button>
 
-          {/* Delete confirmation sub-modal */}
           {showDeleteConfirm ? (
             <div className="py-4 text-center">
               <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-3">
@@ -272,7 +263,6 @@ export const ProfileModal: React.FC = () => {
               </div>
             </div>
           ) : showBlocked ? (
-            /* Blocked list view */
             <div>
               <div className="flex items-center justify-between pb-3 mb-4 border-b border-gray-100">
                 <h4 className="text-sm font-bold text-gray-800 flex items-center gap-2">
@@ -302,10 +292,10 @@ export const ProfileModal: React.FC = () => {
                       className="p-3 rounded-2xl bg-gray-50 flex items-center justify-between border border-gray-100"
                     >
                       <div className="flex items-center gap-2.5">
-                        <UserAvatar avatar={b.avatar} name={b.nickname} id={b.friend_id} size="sm" rounded="rounded-xl" />
+                        <UserAvatar avatar={b.avatar} name={b.nickname} id={b.id} size="sm" rounded="rounded-xl" />
                         <div>
                           <div className="text-xs font-semibold text-gray-800">{b.nickname}</div>
-                          <div className="text-[11px] text-gray-400 font-mono">{b.friend_id}</div>
+                          <div className="text-[11px] text-gray-400 font-mono">{b.id}</div>
                         </div>
                       </div>
                       <button
@@ -321,9 +311,7 @@ export const ProfileModal: React.FC = () => {
               )}
             </div>
           ) : (
-            /* Main Profile View */
             <div>
-              {/* Hidden file input for device photo selection */}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -333,7 +321,6 @@ export const ProfileModal: React.FC = () => {
                 className="hidden"
               />
 
-              {/* Status alerts */}
               {avatarError && (
                 <div className="mb-3 p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2 text-left">
                   <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
@@ -360,7 +347,6 @@ export const ProfileModal: React.FC = () => {
                 </div>
               )}
 
-              {/* Preview mode if user selected a new photo */}
               {previewAvatar ? (
                 <div className="p-4 rounded-3xl bg-teal-50/80 border border-teal-200 text-center mb-4 space-y-3">
                   <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-800 text-[11px] font-semibold">
@@ -372,7 +358,7 @@ export const ProfileModal: React.FC = () => {
                     <UserAvatar
                       avatar={previewAvatar}
                       name={user.nickname}
-                      id={user.friend_id}
+                      id={user.id}
                       size="2xl"
                       rounded="rounded-3xl"
                       className="ring-4 ring-white shadow-md"
@@ -380,7 +366,7 @@ export const ProfileModal: React.FC = () => {
                   </div>
 
                   <p className="text-xs text-teal-800 leading-relaxed px-2">
-                    Ảnh đã được căn chỉnh tỉ lệ vuông. Ảnh này sẽ được lưu và liên kết với tài khoản ID <span className="font-mono font-bold text-teal-900">{user.friend_id}</span> của bạn.
+                    Ảnh đã được căn chỉnh tỉ lệ vuông. Ảnh này sẽ được lưu và liên kết với tài khoản ID <span className="font-mono font-bold text-teal-900">{user.id}</span> của bạn.
                   </p>
 
                   <div className="flex gap-2 pt-1">
@@ -415,14 +401,13 @@ export const ProfileModal: React.FC = () => {
                   </div>
                 </div>
               ) : showResetConfirm ? (
-                /* Reset to default confirmation */
                 <div className="p-4 rounded-3xl bg-amber-50/90 border border-amber-200 text-center mb-4 space-y-3">
                   <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto">
                     <RotateCcw className="w-5 h-5" />
                   </div>
                   <h5 className="text-sm font-bold text-amber-950">Quay về avatar mặc định?</h5>
                   <p className="text-xs text-amber-800 leading-relaxed">
-                    Ảnh đại diện hiện tại sẽ được xóa và chuyển về avatar chữ cái mặc định của tài khoản <span className="font-mono font-bold">{user.friend_id}</span>.
+                    Ảnh đại diện hiện tại sẽ được xóa và chuyển về avatar chữ cái mặc định của tài khoản <span className="font-mono font-bold">{user.id}</span>.
                   </p>
                   <div className="flex gap-2 pt-1">
                     <button
@@ -443,19 +428,17 @@ export const ProfileModal: React.FC = () => {
                   </div>
                 </div>
               ) : (
-                /* Normal Avatar & Basic Info */
                 <div className="text-center pt-2 pb-4">
                   <div className="relative inline-block mx-auto mb-2">
                     <UserAvatar
                       avatar={user.avatar}
                       name={user.nickname}
-                      id={user.friend_id}
+                      id={user.id}
                       size="2xl"
                       rounded="rounded-3xl"
                       className="shadow-inner border-2 border-teal-200/80"
                     />
 
-                    {/* Camera icon button directly on avatar */}
                     <button
                       type="button"
                       id="btn-upload-avatar-trigger"
@@ -483,10 +466,9 @@ export const ProfileModal: React.FC = () => {
                       </div>
                       <div className="flex items-center justify-center gap-1.5 text-xs text-gray-500 mt-0.5">
                         <Users className="w-3.5 h-3.5 text-teal-500" />
-                        <span>{user.friendCount ?? 0} bạn bè</span>
+                        <span>{user.createdAt ? 'Thành viên mới' : '0 bạn bè'}</span>
                       </div>
 
-                      {/* Quick Avatar Management Controls */}
                       <div className="flex flex-wrap items-center justify-center gap-1.5 mt-3">
                         <button
                           type="button"
@@ -521,7 +503,6 @@ export const ProfileModal: React.FC = () => {
                         )}
                       </div>
 
-                      {/* Optional Cute Emoji Presets Drawer */}
                       {showEmojiPicker && (
                         <div className="mt-3 p-2 rounded-2xl bg-gray-50 border border-gray-100 text-left animate-in fade-in">
                           <div className="flex items-center justify-between mb-1.5 px-1">
@@ -552,7 +533,6 @@ export const ProfileModal: React.FC = () => {
                       )}
                     </>
                   ) : (
-                    /* Edit Nickname Form */
                     <form onSubmit={handleSaveProfile} className="mt-3 space-y-3">
                       <input
                         type="text"
@@ -584,7 +564,6 @@ export const ProfileModal: React.FC = () => {
                 </div>
               )}
 
-              {/* Friend ID Box with Copy Button */}
               <div className="p-3.5 rounded-2xl bg-teal-50/70 border border-teal-100/90 mb-4">
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-[11px] font-semibold text-teal-800 uppercase tracking-wider">
@@ -594,7 +573,7 @@ export const ProfileModal: React.FC = () => {
                 </div>
                 <div className="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-teal-200/80 shadow-xs">
                   <span className="font-mono text-base font-bold text-teal-900 tracking-wider">
-                    {user.friend_id}
+                    {user.id}
                   </span>
                   <button
                     type="button"
@@ -619,7 +598,6 @@ export const ProfileModal: React.FC = () => {
                 </p>
               </div>
 
-              {/* Menu Actions */}
               <div className="space-y-1.5 mb-5 border-t border-gray-100 pt-3">
                 <button
                   type="button"
@@ -637,7 +615,6 @@ export const ProfileModal: React.FC = () => {
                 </button>
               </div>
 
-              {/* Logout & Delete */}
               <div className="space-y-2 border-t border-gray-100 pt-3">
                 <button
                   type="button"
