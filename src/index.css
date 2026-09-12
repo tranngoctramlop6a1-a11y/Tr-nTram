@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+@keyframes subtleArrowNudge {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(3px);
+  }
+}
+
+.animate-arrow-nudge {
+  animation: subtleArrowNudge 1.6s ease-in-out infinite;
+}
