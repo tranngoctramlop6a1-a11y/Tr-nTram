@@ -44,9 +44,9 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const TOKEN_KEY = 'teen_auth_token';
 const WELCOMED_KEY = 'teen_welcomed';
 const GUEST_JOURNAL_KEY = 'teen_journal_entries';
-const USER_DATA_KEY = 'teen_user_data';
+const ACTIVE_USER_EMAIL_KEY = 'teen_active_user_email';
 
-export const AVATAR_PRESETS = ['🌸', '🎧', '✨', '🐱', '🐻', '🌿', '🍓', '☁️', '🎨', '🌈', '🚀', '🌷', '🐾', '🐬', '🌙', '🧸'];
+const getUserStorageKey = (email: string) => `teen_user_data_${email.toLowerCase().trim()}`;
 
 const parseJwt = (token: string) => {
   try {
@@ -61,12 +61,34 @@ const parseJwt = (token: string) => {
   }
 };
 
+export const AVATAR_PRESETS = ['🌸', '🎧', '✨', '🐱', '🐻', '🌿', '🍓', '☁️', '🎨', '🌈', '🚀', '🌷', '🐾', '🐬', '🌙', '🧸'];
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
+  
+  // Khôi phục user dựa trên email đang active hoặc token hiện tại
   const [user, setUser] = useState<AuthUser | null>(() => {
-    const saved = localStorage.getItem(USER_DATA_KEY);
-    return saved ? JSON.parse(saved) : null;
+    try {
+      const activeEmail = localStorage.getItem(ACTIVE_USER_EMAIL_KEY);
+      if (activeEmail) {
+        const savedUser = localStorage.getItem(getUserStorageKey(activeEmail));
+        if (savedUser) return JSON.parse(savedUser);
+      }
+      // Fallback kiểm tra dữ liệu cũ nếu có
+      const legacySaved = localStorage.getItem('teen_user_data');
+      if (legacySaved) {
+        const parsed = JSON.parse(legacySaved);
+        if (parsed?.email) {
+          localStorage.setItem(getUserStorageKey(parsed.email), legacySaved);
+          localStorage.setItem(ACTIVE_USER_EMAIL_KEY, parsed.email);
+          localStorage.removeItem('teen_user_data');
+          return parsed;
+        }
+      }
+    } catch {}
+    return null;
   });
+
   const [isGuest, setIsGuest] = useState<boolean>(() => !localStorage.getItem(TOKEN_KEY));
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
@@ -87,7 +109,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsGuest(true);
     }
     setIsLoading(false);
-  }, []);
+  }, [user]);
 
   const checkGuestJournals = useCallback(() => {
     try {
@@ -132,18 +154,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      const isNewUser = !localStorage.getItem(USER_DATA_KEY);
-      const userData: AuthUser = {
-        id,
-        email,
-        nickname: name || email.split('@')[0],
-        avatar: picture,
-        createdAt: new Date().toISOString()
-      };
+      const cleanEmail = email.toLowerCase().trim();
+      const userKey = getUserStorageKey(cleanEmail);
+      
+      // Kiểm tra xem tài khoản email này đã từng đăng nhập trước đó chưa
+      const existingUserData = localStorage.getItem(userKey);
+      let userData: AuthUser;
+      let isNewUser = false;
+
+      if (existingUserData) {
+        // Nếu đã có rồi, giữ nguyên thông tin cũ (nickname, avatar đã tùy chỉnh) nhưng cập nhật token
+        userData = JSON.parse(existingUserData);
+      } else {
+        // Nếu là lần đầu đăng nhập bằng Gmail này
+        isNewUser = true;
+        userData = {
+          id,
+          email: cleanEmail,
+          nickname: name || cleanEmail.split('@')[0],
+          avatar: picture,
+          createdAt: new Date().toISOString()
+        };
+      }
 
       localStorage.setItem(TOKEN_KEY, 'mock_token_' + Date.now());
       localStorage.setItem(WELCOMED_KEY, 'account');
-      localStorage.setItem(USER_DATA_KEY, JSON.stringify(userData));
+      localStorage.setItem(ACTIVE_USER_EMAIL_KEY, cleanEmail);
+      localStorage.setItem(userKey, JSON.stringify(userData));
 
       setToken('mock_token_' + Date.now());
       setUser(userData);
@@ -151,7 +188,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsWelcomeModalOpen(false);
       setIsLoginModalOpen(false);
 
-      if (isNewUser) setIsNicknameModalOpen(true);
+      // Chỉ bật modal đổi biệt danh nếu thực sự là tài khoản mới tinh
+      if (isNewUser) {
+        setIsNicknameModalOpen(true);
+      }
 
       const count = checkGuestJournals();
       if (count > 0) {
@@ -166,7 +206,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = useCallback(async () => {
     localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USER_DATA_KEY);
+    localStorage.removeItem(ACTIVE_USER_EMAIL_KEY);
     setToken(null);
     setUser(null);
     setIsGuest(true);
@@ -177,7 +217,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (user) {
       const updated = { ...user, nickname, avatar };
       setUser(updated);
-      localStorage.setItem(USER_DATA_KEY, JSON.stringify(updated));
+      localStorage.setItem(getUserStorageKey(user.email), JSON.stringify(updated));
     }
     return { success: true };
   }, [user]);
@@ -186,7 +226,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (user) {
       const updated = { ...user, avatar: avatarDataUrl };
       setUser(updated);
-      localStorage.setItem(USER_DATA_KEY, JSON.stringify(updated));
+      localStorage.setItem(getUserStorageKey(user.email), JSON.stringify(updated));
     }
     return { success: true };
   }, [user]);
@@ -195,15 +235,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (user) {
       const updated = { ...user, avatar: '🌱' };
       setUser(updated);
-      localStorage.setItem(USER_DATA_KEY, JSON.stringify(updated));
+      localStorage.setItem(getUserStorageKey(user.email), JSON.stringify(updated));
     }
     return { success: true };
   }, [user]);
 
   const deleteAccount = useCallback(async () => {
-    logout();
+    if (user) {
+      localStorage.removeItem(getUserStorageKey(user.email));
+    }
+    await logout();
     return { success: true };
-  }, [logout]);
+  }, [user, logout]);
 
   const migrateGuestJournal = useCallback(async () => {
     setIsMigrationModalOpen(false);
