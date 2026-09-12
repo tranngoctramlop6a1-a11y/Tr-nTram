@@ -120,9 +120,9 @@ export const FriendsView: React.FC = () => {
     setRequestSentNotice(null);
 
     try {
-      const res = await fetch(`/api/friends/search?friendId=${encodeURIComponent(query)}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+     const res = await fetch(`/api/friends/search?friendId=${encodeURIComponent(query)}`, {
+  headers: { Authorization: `Bearer ${token}` }
+});
       const data = await res.json();
       setSearchResult(data);
     } catch {

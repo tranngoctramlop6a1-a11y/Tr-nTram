@@ -1257,7 +1257,30 @@ app.get('/api/health', (req, res) => {
     tagline: 'Có chuyện gì, cứ kể mình nghe.'
   });
 });
+// Các API quản lý bạn bè đầy đủ
+app.get('/api/friends/list', (req, res) => {
+  res.json({ success: true, friends: [] });
+});
 
+app.get('/api/friends/requests', (req, res) => {
+  res.json({ success: true, incoming: [], outgoing: [] });
+});
+
+app.get('/api/friends/search', (req, res) => {
+  const friendId = req.query.friendId || req.query.id;
+  if (!friendId) {
+    return res.status(400).json({ success: false, message: 'Vui lòng nhập Friend ID!' });
+  }
+  return res.json({
+    success: true,
+    data: {
+      friendId: friendId,
+      name: `Người dùng (${friendId})`,
+      avatar: "https://via.placeholder.com/150",
+      status: "Đang hoạt động"
+    }
+  });
+});
 // Serve frontend: Vite middleware in dev, static files in prod
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
