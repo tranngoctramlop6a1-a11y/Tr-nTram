@@ -108,7 +108,11 @@ export const FriendsView: React.FC = () => {
   // Search by Friend ID
   const handleSearch = async (e?: React.FormEvent, friendIdToSearch?: string) => {
     if (e) e.preventDefault();
-    const query = (friendIdToSearch || searchFriendId).trim();
+    
+    const rawQuery = (friendIdToSearch || searchFriendId).trim();
+    // Loại bỏ dấu # và chuyển thành chữ hoa để khớp với database
+    const query = rawQuery.replace('#', '').toUpperCase();
+    
     if (!query || !token) return;
 
     setIsSearching(true);
