@@ -16,6 +16,7 @@ import { ChatbotView } from './components/ChatbotView';
 import { JournalView } from './components/JournalView';
 import { FriendsView } from './components/FriendsView';
 import { EmotionPlantView } from './components/plant/EmotionPlantView';
+import { SelfLettersView } from './components/letters/SelfLettersView';
 import { FloatingChatbotWidget } from './components/FloatingChatbotWidget';
 import { BotMascot } from './components/BotMascot';
 import { Footer } from './components/Footer';
@@ -39,7 +40,8 @@ import {
   BookOpen,
   Users,
   UserPlus,
-  Sprout
+  Sprout,
+  Mail
 } from 'lucide-react';
 
 function AppContent() {
@@ -77,6 +79,14 @@ function AppContent() {
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [currentTab]);
+
+  // Check URL params for direct letter links
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('tab') === 'letters' || params.has('letter')) {
+      setCurrentTab('letters');
+    }
+  }, []);
 
   const handleOpenChatWithContext = (context: {
     emotion: string;
@@ -317,6 +327,32 @@ function AppContent() {
                 >
                   <Sprout className="w-4 h-4" />
                   <span>Ghé thăm Hộp Cây</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Spotlight: Bức Thư Cho Bản Thân */}
+              <div className="mt-6 bg-gradient-to-r from-[#F5EFEB] via-[#FAF8F5] to-[#EFE7DC] rounded-3xl p-6 sm:p-7 border border-[#DFCFC0] shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-6 hover:shadow-md transition-shadow">
+                <div className="space-y-2 max-w-xl">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/90 border border-[#DFCFC0] text-xs font-serif font-bold text-[#6B4E3D] shadow-2xs">
+                    <Mail className="w-3.5 h-3.5 text-[#8C5A4B]" />
+                    <span>Bức thư cho bản thân • Phong ấn thời gian • Hẹn ngày hội ngộ</span>
+                  </div>
+                  <h3 className="text-xl sm:text-2xl font-serif font-bold text-[#2A1F18]">
+                    📜 Bức Thư Cho Bản Thân
+                  </h3>
+                  <p className="text-xs sm:text-sm text-[#7A6455] leading-relaxed">
+                    Viết lên trang giấy cũ, tự tay vẽ những nét trang trí mộc mạc và ấn định ngày mở thư. Một cái ôm dịu dàng được gửi gắm từ bạn của hôm nay đến chính mình trong tương lai.
+                  </p>
+                </div>
+
+                <button
+                  id="home-self-letters-btn"
+                  onClick={() => setCurrentTab('letters')}
+                  className="px-5 py-3 rounded-2xl bg-[#3B2A1E] hover:bg-[#251A13] text-[#FAF8F5] font-serif font-bold text-xs sm:text-sm shadow-sm hover:shadow-md transition-all flex items-center gap-2 shrink-0 cursor-pointer"
+                >
+                  <Mail className="w-4 h-4 text-[#DFC8B4]" />
+                  <span>Khám phá các phong bì</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
@@ -585,6 +621,9 @@ function AppContent() {
 
         {/* Tab: 🌱 Hộp cây cảm xúc */}
         {currentTab === 'plant' && <EmotionPlantView />}
+
+        {/* Tab: 📜 Bức thư cho bản thân (Letters to My Future Self) */}
+        {currentTab === 'letters' && <SelfLettersView />}
       </main>
 
       {/* Floating Chatbot Widget for all other pages */}

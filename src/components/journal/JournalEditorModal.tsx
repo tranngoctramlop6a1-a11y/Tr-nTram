@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { JournalEntry, JournalTheme, JournalMessageItem } from '../../types';
+import { JournalEntry, JournalTheme, JournalMessageItem, JournalImageItem } from '../../types';
 import { 
   JOURNAL_MOODS, 
   JOURNAL_STICKERS, 
@@ -25,9 +25,13 @@ import {
   Clock,
   Sparkles,
   ChevronDown,
-  Lock
+  Lock,
+  Camera,
+  AlertCircle,
+  ImageIcon
 } from 'lucide-react';
 import { JournalStyleDisplay, JournalScrapbookStyle } from './JournalStyleDisplay';
+import { uploadJournalImage } from '../../utils/journalImageUpload';
 
 interface JournalEditorModalProps {
   isOpen: boolean;
@@ -53,6 +57,7 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
   // Primary diary data states
   const [content, setContent] = useState('');
   const [messages, setMessages] = useState<JournalMessageItem[]>([]);
+  const [images, setImages] = useState<JournalImageItem[]>([]);
   const [title, setTitle] = useState('');
   const [mood, setMood] = useState<string | undefined>(undefined);
   const [moodLabel, setMoodLabel] = useState<string | undefined>(undefined);
@@ -62,6 +67,12 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
   const [readLaterDate, setReadLaterDate] = useState<string | undefined>(undefined);
   const [reflectionNote, setReflectionNote] = useState('');
   const [isFavorite, setIsFavorite] = useState(false);
+
+  // Image upload states
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [lastFailedFile, setLastFailedFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Chat-diary input state
   const [inputText, setInputText] = useState('');
@@ -130,10 +141,11 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
       // 1. Check local draft
       const draft = getJournalDraft(dateStr);
 
-      if (draft && (draft.content?.trim() || draft.title?.trim() || draft.mood || (draft.messages && draft.messages.length > 0))) {
+      if (draft && (draft.content?.trim() || draft.title?.trim() || draft.mood || (draft.messages && draft.messages.length > 0) || (draft.images && draft.images.length > 0))) {
         const rawContent = draft.content || '';
         setContent(rawContent);
         setMessages(draft.messages && draft.messages.length > 0 ? draft.messages : parseMessagesFromContent(rawContent));
+        setImages(draft.images || []);
         setTitle(draft.title || '');
         setMood(draft.mood);
         setMoodLabel(draft.moodLabel || JOURNAL_MOODS.find((m) => m.emoji === draft.mood)?.label);
@@ -144,11 +156,12 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
         setReflectionNote(draft.reflectionNote || '');
         setIsFavorite(!!draft.isFavorite);
         setSaveStatus('saved');
-      } else if (existingEntry && (existingEntry.content?.trim() || existingEntry.mood || (existingEntry.messages && existingEntry.messages.length > 0))) {
+      } else if (existingEntry && (existingEntry.content?.trim() || existingEntry.mood || (existingEntry.messages && existingEntry.messages.length > 0) || (existingEntry.images && existingEntry.images.length > 0))) {
         // 2. Existing entry
         const rawContent = existingEntry.content || '';
         setContent(rawContent);
         setMessages(existingEntry.messages && existingEntry.messages.length > 0 ? existingEntry.messages : parseMessagesFromContent(rawContent, existingEntry.messages));
+        setImages(existingEntry.images || []);
         setTitle(existingEntry.title || '');
         setMood(existingEntry.mood);
         setMoodLabel(existingEntry.moodLabel || JOURNAL_MOODS.find((m) => m.emoji === existingEntry.mood)?.label);
@@ -164,6 +177,7 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
         const initialText = initialPromptText ? `🌱 ${initialPromptText}\n\n` : '';
         setContent(initialText);
         setMessages(initialText ? [{ id: `init-${Date.now()}`, time: 'Gợi ý', text: initialText.trim() }] : []);
+        setImages([]);
         setTitle('');
         setMood(undefined);
         setMoodLabel(undefined);
@@ -179,6 +193,9 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
       setInputText('');
       setShowMoodSelector(false);
       setShowTagSelector(false);
+      setIsUploading(false);
+      setUploadError(null);
+      setLastFailedFile(null);
     }
   }, [isOpen, dateStr]);
 
@@ -237,12 +254,16 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
     newTheme?: JournalTheme,
     newReadLater?: string,
     newReflection?: string,
-    newFav?: boolean
+    newFav?: boolean,
+    newImages?: JournalImageItem[]
   ) => {
+    const effectiveImages = newImages ?? images;
+
     // 1. Instant sync to localStorage draft
     saveJournalDraft(dateStr, {
       content: newContent,
       messages: newMessages,
+      images: effectiveImages,
       title: newTitle,
       mood: newMood,
       moodLabel: JOURNAL_MOODS.find((m) => m.emoji === newMood)?.label,
@@ -254,7 +275,7 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
       isFavorite: typeof newFav === 'boolean' ? newFav : isFavorite
     });
 
-    if (!newContent.trim() && !newTitle.trim() && !newMood && newMessages.length === 0) {
+    if (!newContent.trim() && !newTitle.trim() && !newMood && newMessages.length === 0 && effectiveImages.length === 0) {
       setSaveStatus('idle');
       return;
     }
@@ -273,6 +294,7 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
         title: newTitle.trim() || undefined,
         content: newContent,
         messages: newMessages,
+        images: effectiveImages,
         mood: newMood,
         moodLabel: JOURNAL_MOODS.find((m) => m.emoji === newMood)?.label,
         tags: newTags ?? tags,
@@ -286,6 +308,70 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
       onSaveEntry(updated);
       setSaveStatus('saved');
     }, 600);
+  };
+
+  // Image Upload Handlers
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (selectedFiles.length === 0) return;
+
+    const currentCount = images.length;
+    const maxAllowed = 4;
+    const availableSlots = maxAllowed - currentCount;
+
+    if (availableSlots <= 0) {
+      alert('Mỗi mục nhật ký chỉ lưu tối đa 4 ảnh để trang viết luôn đẹp và gọn gàng.');
+      return;
+    }
+
+    const filesToUpload = selectedFiles.slice(0, availableSlots);
+    await processAndUploadFiles(filesToUpload);
+  };
+
+  const processAndUploadFiles = async (files: File[]) => {
+    setIsUploading(true);
+    setUploadError(null);
+    setLastFailedFile(null);
+
+    const token = localStorage.getItem('teen_mind_auth_token') || sessionStorage.getItem('teen_mind_auth_token');
+    let updatedImages = [...images];
+
+    for (const file of files) {
+      try {
+        const uploadedItem = await uploadJournalImage(file, token);
+        updatedImages = [...updatedImages, uploadedItem];
+        setImages(updatedImages);
+        triggerAutoSave(content, messages, title, mood, tags, stickers, theme, readLaterDate, reflectionNote, isFavorite, updatedImages);
+      } catch (err: any) {
+        console.error('Lỗi khi tải ảnh:', err);
+        setUploadError(err.message || 'Ảnh chưa được thêm thành công. Thử lại nhé.');
+        setLastFailedFile(file);
+        break;
+      }
+    }
+
+    setIsUploading(false);
+  };
+
+  const handleRetryUpload = () => {
+    if (lastFailedFile) {
+      processAndUploadFiles([lastFailedFile]);
+    }
+  };
+
+  const handleDeleteImage = (imageId: string) => {
+    const nextImages = images.filter((img) => img.id !== imageId);
+    setImages(nextImages);
+    triggerAutoSave(content, messages, title, mood, tags, stickers, theme, readLaterDate, reflectionNote, isFavorite, nextImages);
+
+    try {
+      const token = localStorage.getItem('teen_mind_auth_token') || sessionStorage.getItem('teen_mind_auth_token');
+      fetch(`/api/journal/images/${imageId}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      }).catch(() => {});
+    } catch {}
   };
 
   // Section 6: Sending a new message/thought in the chat diary
@@ -310,7 +396,7 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
     setInputText('');
 
     // Trigger instant autosave without closing or exiting!
-    triggerAutoSave(nextContent, nextMessages, title, mood, tags, stickers, theme, readLaterDate, reflectionNote, isFavorite);
+    triggerAutoSave(nextContent, nextMessages, title, mood, tags, stickers, theme, readLaterDate, reflectionNote, isFavorite, images);
 
     // Keep focus on input for typing next thoughts immediately
     setTimeout(() => {
@@ -332,7 +418,7 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
     const nextContent = nextMessages.map((m) => m.text).join('\n\n');
     setMessages(nextMessages);
     setContent(nextContent);
-    triggerAutoSave(nextContent, nextMessages, title, mood, tags, stickers, theme, readLaterDate, reflectionNote, isFavorite);
+    triggerAutoSave(nextContent, nextMessages, title, mood, tags, stickers, theme, readLaterDate, reflectionNote, isFavorite, images);
   };
 
   // Delete a message
@@ -341,7 +427,7 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
     const nextContent = nextMessages.map((m) => m.text).join('\n\n');
     setMessages(nextMessages);
     setContent(nextContent);
-    triggerAutoSave(nextContent, nextMessages, title, mood, tags, stickers, theme, readLaterDate, reflectionNote, isFavorite);
+    triggerAutoSave(nextContent, nextMessages, title, mood, tags, stickers, theme, readLaterDate, reflectionNote, isFavorite, images);
   };
 
   // Section 4: Mood selection
@@ -351,7 +437,7 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
     setMood(nextMood);
     setMoodLabel(nextLabel);
     setShowMoodSelector(false);
-    triggerAutoSave(content, messages, title, nextMood, tags, stickers, theme, readLaterDate, reflectionNote, isFavorite);
+    triggerAutoSave(content, messages, title, nextMood, tags, stickers, theme, readLaterDate, reflectionNote, isFavorite, images);
   };
 
   // Section 5: Tag toggling
@@ -363,7 +449,7 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
       nextTags = [...tags, tag];
     }
     setTags(nextTags);
-    triggerAutoSave(content, messages, title, mood, nextTags, stickers, theme, readLaterDate, reflectionNote, isFavorite);
+    triggerAutoSave(content, messages, title, mood, nextTags, stickers, theme, readLaterDate, reflectionNote, isFavorite, images);
   };
 
   const handleAddCustomTag = () => {
@@ -373,7 +459,7 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
     if (!tags.includes(formatted)) {
       const nextTags = [...tags, formatted];
       setTags(nextTags);
-      triggerAutoSave(content, messages, title, mood, nextTags, stickers, theme, readLaterDate, reflectionNote, isFavorite);
+      triggerAutoSave(content, messages, title, mood, nextTags, stickers, theme, readLaterDate, reflectionNote, isFavorite, images);
     }
     setCustomTag('');
     setShowCustomTagInput(false);
@@ -383,7 +469,7 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
   const handleToggleFavorite = () => {
     const nextFav = !isFavorite;
     setIsFavorite(nextFav);
-    triggerAutoSave(content, messages, title, mood, tags, stickers, theme, readLaterDate, reflectionNote, nextFav);
+    triggerAutoSave(content, messages, title, mood, tags, stickers, theme, readLaterDate, reflectionNote, nextFav, images);
   };
 
   // "Không biết viết gì" random prompt
@@ -404,7 +490,7 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
   const handleFinishAndClose = () => {
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
 
-    if (content.trim() || title.trim() || mood || messages.length > 0) {
+    if (content.trim() || title.trim() || mood || messages.length > 0 || images.length > 0) {
       const nowIso = new Date().toISOString();
       const updated: JournalEntry = {
         id: existingEntry?.id || `journal-${dateStr}`,
@@ -414,6 +500,7 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
         title: title.trim() || undefined,
         content: content,
         messages: messages,
+        images: images,
         mood: mood,
         moodLabel: moodLabel || JOURNAL_MOODS.find((m) => m.emoji === mood)?.label,
         tags: tags,
@@ -433,10 +520,11 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
   const handleModalClose = () => {
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
 
-    if (content.trim() || title.trim() || mood || messages.length > 0) {
+    if (content.trim() || title.trim() || mood || messages.length > 0 || images.length > 0) {
       saveJournalDraft(dateStr, {
         content,
         messages,
+        images,
         title,
         mood,
         moodLabel,
@@ -458,6 +546,7 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
         title: title.trim() || undefined,
         content: content,
         messages: messages,
+        images: images,
         mood: mood,
         moodLabel: moodLabel || JOURNAL_MOODS.find((m) => m.emoji === mood)?.label,
         tags: tags,
@@ -479,6 +568,16 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
       <div 
         className={`w-full max-w-2xl rounded-3xl border shadow-2xl my-auto transition-colors flex flex-col max-h-[94vh] overflow-hidden ${atmosphere.wrapper}`}
       >
+        {/* Hidden native file picker */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png, image/jpeg, image/jpg, image/webp"
+          multiple
+          onChange={handleFileSelect}
+          className="hidden"
+        />
+
         {/* Top Navbar */}
         <div className="px-5 py-3.5 border-b border-stone-200/80 flex items-center justify-between shrink-0 bg-white/70">
           <div className="flex items-center gap-2 text-xs font-semibold text-stone-500">
@@ -489,14 +588,19 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Auto save indicator */}
+            {/* Auto save & uploading indicator */}
             <span className="text-[11px] font-semibold text-stone-500 hidden sm:inline-flex items-center gap-1">
-              {saveStatus === 'saving' ? (
+              {isUploading ? (
+                <span className="text-amber-600 flex items-center gap-1 animate-pulse">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                  Đang thêm ảnh...
+                </span>
+              ) : saveStatus === 'saving' ? (
                 <span className="text-amber-600 flex items-center gap-1 animate-pulse">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
                   Đang lưu...
                 </span>
-              ) : (content.trim() || mood || messages.length > 0) ? (
+              ) : (content.trim() || mood || messages.length > 0 || images.length > 0) ? (
                 <span className="text-emerald-600 flex items-center gap-0.5">
                   <Check className="w-3 h-3" /> Đã lưu
                 </span>
@@ -722,6 +826,7 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
           <JournalStyleDisplay
             content={content}
             messages={messages}
+            images={images}
             title={title}
             mood={mood}
             moodLabel={moodLabel}
@@ -729,8 +834,10 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
             isFavorite={isFavorite}
             dateStr={dateStr}
             activeStyleOverride={activeStyle}
+            editable={true}
             onDeleteMessage={handleDeleteMessage}
             onEditMessage={handleEditMessage}
+            onDeleteImage={handleDeleteImage}
             onStartWriting={() => inputRef.current?.focus()}
           />
 
@@ -796,7 +903,19 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
           
           {/* Quick prompt helper buttons */}
           <div className="flex items-center justify-between text-xs text-stone-400">
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {/* Add image button */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading || images.length >= 4}
+                title={images.length >= 4 ? 'Đã đạt tối đa 4 ảnh' : 'Thêm ảnh từ thiết bị (JPG, PNG, WEBP)'}
+                className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[11px] font-semibold border border-emerald-200 transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
+              >
+                <Camera className="w-3 h-3" />
+                <span>{images.length > 0 ? `Ảnh (${images.length}/4)` : '📷 Thêm ảnh'}</span>
+              </button>
+
               <button
                 type="button"
                 onClick={handleRandomPrompt}
@@ -826,6 +945,34 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
               Nhấn Enter để gửi tin nhắn nhật ký
             </span>
           </div>
+
+          {/* Upload status & error notifications */}
+          {uploadError && (
+            <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-center justify-between gap-2 animate-in fade-in duration-150">
+              <div className="flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                <span>{uploadError}</span>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                {lastFailedFile && (
+                  <button
+                    type="button"
+                    onClick={handleRetryUpload}
+                    className="px-2.5 py-1 rounded-md bg-rose-600 text-white text-[11px] font-bold hover:bg-rose-700 transition-colors cursor-pointer"
+                  >
+                    Thử lại
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setUploadError(null)}
+                  className="text-rose-400 hover:text-rose-700 text-xs px-1 font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Categorized Prompt drawer */}
           {showPromptCategories && (
@@ -887,7 +1034,7 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
                       onClick={() => {
                         setReadLaterDate(targetVal);
                         setShowReadLaterPicker(false);
-                        triggerAutoSave(content, messages, title, mood, tags, stickers, theme, targetVal, reflectionNote, isFavorite);
+                        triggerAutoSave(content, messages, title, mood, tags, stickers, theme, targetVal, reflectionNote, isFavorite, images);
                       }}
                       className={`px-3 py-1 rounded-lg font-semibold transition-colors ${
                         isCur ? 'bg-amber-600 text-white' : 'bg-white text-amber-900 border border-amber-200'
@@ -903,6 +1050,15 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
 
           {/* The Chat-Style Diary Input Box */}
           <div className="flex items-end gap-2 bg-stone-50/80 p-2 rounded-2xl border border-stone-200/80 focus-within:border-stone-400 focus-within:bg-white transition-all">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading || images.length >= 4}
+              title={images.length >= 4 ? 'Đã đạt tối đa 4 ảnh' : '📷 Thêm ảnh vào nhật ký'}
+              className="p-2 rounded-xl text-stone-500 hover:text-stone-900 hover:bg-stone-200/60 transition-colors disabled:opacity-40 disabled:hover:bg-transparent cursor-pointer shrink-0"
+            >
+              <Camera className="w-4 h-4" />
+            </button>
             <textarea
               ref={inputRef}
               value={inputText}

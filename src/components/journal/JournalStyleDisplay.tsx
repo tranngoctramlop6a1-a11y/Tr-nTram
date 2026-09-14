@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
-import { JournalMessageItem } from '../../types';
+import { JournalMessageItem, JournalImageItem } from '../../types';
 import { Trash2, Edit2, Check, X, Sparkles, Heart } from 'lucide-react';
+import { JournalImageGallery } from './JournalImageGallery';
 
 export type JournalScrapbookStyle = 'auto' | 'chat' | 'paper' | 'memory' | 'minimal';
 
 interface JournalStyleDisplayProps {
   content: string;
   messages: JournalMessageItem[];
+  images?: JournalImageItem[];
+  editable?: boolean;
+  onDeleteImage?: (id: string) => void;
   title?: string;
   mood?: string;
   moodLabel?: string;
@@ -22,6 +26,9 @@ interface JournalStyleDisplayProps {
 export const JournalStyleDisplay: React.FC<JournalStyleDisplayProps> = ({
   content,
   messages,
+  images = [],
+  editable = false,
+  onDeleteImage,
   title,
   mood,
   moodLabel,
@@ -65,17 +72,17 @@ export const JournalStyleDisplay: React.FC<JournalStyleDisplayProps> = ({
     if (isFavorite || tags.includes('#memory') || tags.includes('#goodday') || (title && title.trim().length > 0)) {
       return 'memory';
     }
-    // Style D: Minimal day (<= 12 words, 1 message)
-    if (totalWords <= 12 && effectiveMessages.length <= 1) {
+    // Style D: Minimal day (<= 12 words, 1 message, no photos)
+    if (totalWords <= 12 && effectiveMessages.length <= 1 && images.length === 0) {
       return 'minimal';
     }
     // Style A: Chat Diary (>= 2 messages / chunks)
     if (effectiveMessages.length >= 2) {
       return 'chat';
     }
-    // Style B: Paper Note (single longer chunk)
+    // Style B: Paper Note (single longer chunk or photos)
     return 'paper';
-  }, [activeStyleOverride, isFavorite, tags, title, totalWords, effectiveMessages.length]);
+  }, [activeStyleOverride, isFavorite, tags, title, totalWords, effectiveMessages.length, images.length]);
 
   const handleStartEdit = (msg: JournalMessageItem) => {
     setEditingMsgId(msg.id);
@@ -89,8 +96,8 @@ export const JournalStyleDisplay: React.FC<JournalStyleDisplayProps> = ({
     setEditingMsgId(null);
   };
 
-  // EMPTY STATE (Section 12)
-  if (effectiveMessages.length === 0 && !title && !mood) {
+  // EMPTY STATE (Section 12) - Only when no text, no title, no mood AND no photos
+  if (effectiveMessages.length === 0 && !title && !mood && images.length === 0) {
     return (
       <div className="py-12 px-4 text-center space-y-4 max-w-sm mx-auto">
         <div className="w-16 h-16 rounded-3xl bg-stone-100/90 border border-stone-200/80 flex items-center justify-center mx-auto text-2xl shadow-2xs select-none">
@@ -127,6 +134,18 @@ export const JournalStyleDisplay: React.FC<JournalStyleDisplayProps> = ({
           <span>💬 Trò chuyện cùng chính mình trong ngày</span>
           <span>{effectiveMessages.length} tin nhắn</span>
         </div>
+
+        {/* Photos in Chat style */}
+        {images.length > 0 && (
+          <div className="mb-3">
+            <JournalImageGallery
+              images={images}
+              editable={editable}
+              onDeleteImage={onDeleteImage}
+              dateFormatted={dateStr}
+            />
+          </div>
+        )}
 
         <div className="space-y-3.5">
           {effectiveMessages.map((msg) => {
@@ -236,13 +255,27 @@ export const JournalStyleDisplay: React.FC<JournalStyleDisplayProps> = ({
               </h3>
             ) : null}
 
-            <div className="p-4 rounded-2xl bg-white/90 border border-amber-100/90 text-sm sm:text-base font-semibold text-amber-950 italic leading-relaxed">
-              “{highlightQuote}”
-            </div>
+            {highlightQuote && (
+              <div className="p-4 rounded-2xl bg-white/90 border border-amber-100/90 text-sm sm:text-base font-semibold text-amber-950 italic leading-relaxed">
+                “{highlightQuote}”
+              </div>
+            )}
           </div>
 
+          {/* Photos in Memory style */}
+          {images.length > 0 && (
+            <div className="pt-1">
+              <JournalImageGallery
+                images={images}
+                editable={editable}
+                onDeleteImage={onDeleteImage}
+                dateFormatted={dateStr}
+              />
+            </div>
+          )}
+
           {/* Full Content if longer */}
-          {mainText !== highlightQuote && (
+          {mainText && mainText !== highlightQuote && (
             <div className="text-xs sm:text-sm text-stone-700 leading-relaxed whitespace-pre-wrap font-medium pt-2 border-t border-amber-100">
               {mainText}
             </div>
@@ -273,15 +306,31 @@ export const JournalStyleDisplay: React.FC<JournalStyleDisplayProps> = ({
     const shortText = effectiveMessages.map((m) => m.text).join(' ') || content;
 
     return (
-      <div className="py-12 px-6 max-w-md mx-auto text-center space-y-4">
+      <div className="py-8 sm:py-12 px-6 max-w-md mx-auto text-center space-y-4">
         {mood && (
           <div className="text-3xl select-none mx-auto drop-shadow-2xs">
             {mood}
           </div>
         )}
-        <div className="text-base sm:text-lg font-bold text-stone-800 leading-relaxed tracking-tight px-4">
-          “{shortText}”
-        </div>
+
+        {/* Photos in Minimal style */}
+        {images.length > 0 && (
+          <div className="text-left my-3">
+            <JournalImageGallery
+              images={images}
+              editable={editable}
+              onDeleteImage={onDeleteImage}
+              dateFormatted={dateStr}
+            />
+          </div>
+        )}
+
+        {shortText && (
+          <div className="text-base sm:text-lg font-bold text-stone-800 leading-relaxed tracking-tight px-4">
+            “{shortText}”
+          </div>
+        )}
+
         {tags.length > 0 && (
           <div className="flex items-center justify-center gap-1.5 pt-2">
             {tags.map((t, idx) => (
@@ -312,9 +361,23 @@ export const JournalStyleDisplay: React.FC<JournalStyleDisplayProps> = ({
           </h3>
         )}
 
-        <div className="text-xs sm:text-sm text-stone-800 leading-relaxed whitespace-pre-wrap font-medium">
-          {fullText}
-        </div>
+        {/* Photos in Paper Note style */}
+        {images.length > 0 && (
+          <div className="mb-4">
+            <JournalImageGallery
+              images={images}
+              editable={editable}
+              onDeleteImage={onDeleteImage}
+              dateFormatted={dateStr}
+            />
+          </div>
+        )}
+
+        {fullText && (
+          <div className="text-xs sm:text-sm text-stone-800 leading-relaxed whitespace-pre-wrap font-medium">
+            {fullText}
+          </div>
+        )}
 
         {tags.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5 pt-3 border-t border-stone-100 text-xs">
@@ -332,3 +395,4 @@ export const JournalStyleDisplay: React.FC<JournalStyleDisplayProps> = ({
     </div>
   );
 };
+

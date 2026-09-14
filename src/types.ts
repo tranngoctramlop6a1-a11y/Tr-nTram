@@ -1,6 +1,7 @@
 export type NavigationTab = 
   | 'chatbot'
   | 'home'
+  | 'letters'
   | 'plant'
   | 'journal'
   | 'friends'
@@ -11,6 +12,84 @@ export type NavigationTab =
   | 'school'
   | 'help'
   | 'stories';
+
+// Bức thư cho bản thân ("Letters to My Future Self")
+export type PaperStyle = 
+  | 'parchment' 
+  | 'ivory' 
+  | 'kraft' 
+  | 'sage' 
+  | 'indigo' 
+  | 'rose' 
+  | 'mint' 
+  | 'warm_ivory'
+  | 'cream'
+  | 'butter'
+  | 'peach'
+  | 'sky'
+  | 'lavender'
+  | 'matcha'
+  | 'coffee'
+  | 'terracotta'
+  | 'custom';
+export type LetterFont = 'serif' | 'handwriting' | 'sans' | 'cursive' | 'patrick' | 'playfair' | 'charm';
+export type LetterConditionType = 'always' | 'date' | 'mood' | 'code';
+
+export interface SelfLetterRecord {
+  id: string;
+  sender_id?: string;
+  sender_name: string;
+  receiver_name?: string;
+  title: string;              // Tiêu đề bức thư
+  content: string;            // Nội dung tâm sự gửi chính mình
+  paper_style: PaperStyle;    // Nền giấy: be giấy cũ, trắng ngà, nâu gỗ, xanh trầm, pastel...
+  ink_color: string;          // Màu mực chữ (#292524, #78350f, #1e3a5f, #1e392a, #5c252d)
+  font_family: LetterFont;    // Serif, handwriting, sans
+  drawing_data?: string | null; // Nét vẽ tay / trang trí tự vẽ (canvas data URL PNG)
+  open_date: string;          // Ngày hẹn mở thư (YYYY-MM-DD hoặc ISO string)
+  wax_seal?: string;          // Phong cách con dấu sáp niêm phong
+  is_opened: boolean;
+  opened_at?: string | null;
+  created_at: string;
+  // Stickers & decorations
+  stickers_data?: string;     // Danh sách sticker đã đính (JSON string)
+  // Legacy compatibility fields
+  seal_icon?: string;
+  theme_color?: string;
+  condition_type?: LetterConditionType;
+  unlock_at?: string | null;
+  share_key?: string;
+}
+
+export interface SelfLetterSummary {
+  id: string;
+  sender_name: string;
+  receiver_name?: string;
+  title: string;
+  paper_style: PaperStyle;
+  ink_color: string;
+  font_family: LetterFont;
+  open_date: string;
+  wax_seal?: string;
+  is_opened: boolean;
+  opened_at?: string | null;
+  created_at: string;
+  is_locked: boolean;         // Chưa đến ngày hẹn mở
+  lock_message?: string;      // Thông báo nhẹ nhàng khi bấm vào phong bì bị khóa
+  days_remaining?: number;    // Số ngày còn lại
+  has_drawing?: boolean;
+  stickers_data?: string;
+  // Legacy compatibility fields
+  seal_icon?: string;
+  theme_color?: string;
+  condition_type?: LetterConditionType;
+  unlock_at?: string | null;
+  share_key?: string;
+}
+
+// Aliases for backwards compatibility
+export type LetterRecord = SelfLetterRecord;
+export type LetterSummary = SelfLetterSummary;
 
 export type JournalTheme = 'cute' | 'night' | 'minimal' | 'paper' | 'gentle';
 
@@ -26,14 +105,23 @@ export interface JournalMessageItem {
   text: string;
 }
 
+export interface JournalImageItem {
+  id: string;
+  url: string;
+  caption?: string;
+  createdAt: string;
+}
+
 export interface JournalEntry {
   id: string;
+  userId?: string;
   date: string; // 'YYYY-MM-DD'
   createdAt: string;
   updatedAt: string;
   title?: string;
   content: string;
   messages?: JournalMessageItem[];
+  images?: JournalImageItem[];
   mood?: string;
   moodLabel?: string;
   tags: string[];
@@ -49,6 +137,7 @@ export interface JournalEntry {
 export interface JournalDraft {
   content: string;
   messages?: JournalMessageItem[];
+  images?: JournalImageItem[];
   title?: string;
   mood?: string;
   moodLabel?: string;
@@ -309,3 +398,4 @@ export interface FriendPlantData {
   isAllowed: boolean;
   reason?: string;
 }
+

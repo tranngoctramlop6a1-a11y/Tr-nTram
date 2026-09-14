@@ -248,7 +248,12 @@ export function clearJournalDraft(dateStr: string): void {
 
 export function hasJournalDraft(dateStr: string): boolean {
   const draft = getJournalDraft(dateStr);
-  return !!draft && (!!draft.content?.trim() || !!draft.title?.trim() || !!draft.mood);
+  return !!draft && (
+    !!draft.content?.trim() || 
+    !!draft.title?.trim() || 
+    !!draft.mood || 
+    !!(draft.images && draft.images.length > 0)
+  );
 }
 
 // Helper to get daily rotating quote

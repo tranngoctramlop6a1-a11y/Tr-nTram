@@ -67,23 +67,27 @@ export const FriendsView: React.FC = () => {
 
   // Fetch Friends & Requests
   const fetchData = useCallback(async () => {
-    if (!token) return;
     setIsLoading(true);
     try {
+      const activeToken = token || 'mock_guest_session';
       const [friendsRes, reqRes] = await Promise.all([
-        fetch('/api/friends/list', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/friends/requests', { headers: { Authorization: `Bearer ${token}` } })
+        fetch('/api/friends/list', { headers: { Authorization: `Bearer ${activeToken}` } }),
+        fetch('/api/friends/requests', { headers: { Authorization: `Bearer ${activeToken}` } })
       ]);
 
       if (friendsRes.ok) {
-        const data = await friendsRes.json();
-        setFriends(data.friends || []);
+        const data = await friendsRes.json().catch(() => null);
+        if (data?.friends) {
+          setFriends(data.friends);
+        }
       }
 
       if (reqRes.ok) {
-        const data = await reqRes.json();
-        setIncomingRequests(data.incoming || []);
-        setOutgoingRequests(data.outgoing || []);
+        const data = await reqRes.json().catch(() => null);
+        if (data) {
+          setIncomingRequests(data.incoming || []);
+          setOutgoingRequests(data.outgoing || []);
+        }
       }
     } catch (e) {
       console.error('Error fetching friends data:', e);
@@ -92,10 +96,8 @@ export const FriendsView: React.FC = () => {
   }, [token]);
 
   useEffect(() => {
-    if (token) {
-      fetchData();
-    }
-  }, [token, fetchData]);
+    fetchData();
+  }, [fetchData]);
 
   // Copy user's own Friend ID
   const handleCopyOwnId = () => {
@@ -113,43 +115,105 @@ export const FriendsView: React.FC = () => {
     // Loại bỏ dấu # và chuyển thành chữ hoa để khớp với database
     const query = rawQuery.replace('#', '').toUpperCase();
     
-    if (!query || !token) return;
+    if (!query) return;
 
     setIsSearching(true);
     setSearchResult(null);
     setRequestSentNotice(null);
 
     try {
-     const res = await fetch(`/api/friends/search?friendId=${encodeURIComponent(query)}`, {
-  headers: { Authorization: `Bearer ${token}` }
-});
-      const data = await res.json();
-      setSearchResult(data);
-    } catch {
-      setSearchResult({ found: false, message: 'Lỗi kết nối máy chủ.' });
+      const activeToken = token || 'mock_guest_session';
+      const res = await fetch(`/api/friends/search?friendId=${encodeURIComponent(query)}`, {
+        headers: { Authorization: `Bearer ${activeToken}` }
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data) {
+        setSearchResult(data);
+      } else {
+        setSearchResult({
+          found: false,
+          message: data?.message || 'Không tìm thấy người dùng với mã này. Bạn kiểm tra lại mã nhé!'
+        });
+      }
+    } catch (err) {
+      console.error('Lỗi tìm kiếm bạn bè:', err);
+      setSearchResult({
+        found: false,
+        message: 'Không thể kết nối đến máy chủ. Bạn vui lòng thử lại sau ít phút nhé.'
+      });
+    } finally {
+      setIsSearching(false);
     }
-    setIsSearching(false);
+  };
+
+  // Add Friend directly (POST /api/friends/add)
+  const handleAddFriend = async (targetFriendId: string) => {
+    const cleanId = targetFriendId.trim();
+    if (!cleanId) return;
+
+    setActionLoading(true);
+    setRequestSentNotice(null);
+
+    try {
+      const activeToken = token || 'mock_guest_session';
+      const res = await fetch('/api/friends/add', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${activeToken}`
+        },
+        body: JSON.stringify({ friendId: cleanId, friend_id: cleanId })
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (res.ok && data?.success) {
+        setRequestSentNotice(data.message || 'Đã thêm bạn thành công!');
+        // Refresh danh sách bạn bè
+        await fetchData();
+        if (searchResult && searchResult.user) {
+          setSearchResult({
+            ...searchResult,
+            isFriend: true,
+            hasPendingRequest: false
+          });
+        }
+      } else {
+        const errorMsg = data?.message || data?.error || 'Không thể kết bạn lúc này. Bạn kiểm tra lại mã Friend ID nhé.';
+        alert(errorMsg);
+      }
+    } catch (err) {
+      console.error('Lỗi khi kết bạn:', err);
+      alert('Không thể kết nối với máy chủ lúc này. Bạn vui lòng thử lại sau ít phút nhé.');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   // Send Friend Request
   const handleSendRequest = async (targetFriendId: string) => {
-    if (!token) return;
+    const cleanId = targetFriendId.trim();
+    if (!cleanId) return;
+
     setActionLoading(true);
+    setRequestSentNotice(null);
+
     try {
+      const activeToken = token || 'mock_guest_session';
       const res = await fetch('/api/friends/request', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          Authorization: `Bearer ${activeToken}`
         },
-        body: JSON.stringify({ friend_id: targetFriendId })
+        body: JSON.stringify({ friend_id: cleanId, friendId: cleanId })
       });
 
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setRequestSentNotice(data.message);
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success) {
+        setRequestSentNotice(data.message || 'Đã gửi lời mời kết bạn thành công!');
         // Refresh outgoing requests and search result state
-        fetchData();
+        await fetchData();
         if (searchResult && searchResult.user) {
           setSearchResult({
             ...searchResult,
@@ -158,12 +222,14 @@ export const FriendsView: React.FC = () => {
           });
         }
       } else {
-        alert(data.message || 'Không thể gửi lời mời.');
+        alert(data?.message || data?.error || 'Không thể gửi lời mời lúc này.');
       }
-    } catch {
-      alert('Lỗi kết nối.');
+    } catch (err) {
+      console.error('Lỗi khi gửi lời mời:', err);
+      alert('Không thể kết nối với máy chủ lúc này. Bạn vui lòng thử lại sau ít phút nhé.');
+    } finally {
+      setActionLoading(false);
     }
-    setActionLoading(false);
   };
 
   // Respond to request (accept / reject)
@@ -679,7 +745,7 @@ export const FriendsView: React.FC = () => {
               Nhập mã Friend ID (Ví dụ: #5829AN) của bạn bè để tìm và gửi lời mời kết nối an toàn.
             </p>
 
-            <form onSubmit={(e) => handleSearch(e)} className="flex gap-2.5">
+            <form onSubmit={(e) => handleSearch(e)} className="flex flex-col sm:flex-row gap-2.5">
               <div className="relative flex-1">
                 <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
@@ -687,23 +753,35 @@ export const FriendsView: React.FC = () => {
                   value={searchFriendId}
                   onChange={(e) => setSearchFriendId(e.target.value)}
                   placeholder="Nhập Friend ID (Ví dụ: #5829AN)..."
-                  className="w-full pl-10 pr-4 py-3 rounded-2xl border border-gray-200 text-xs sm:text-sm font-mono tracking-wider uppercase focus:outline-hidden focus:ring-2 focus:ring-teal-400"
+                  className="w-full pl-10 pr-4 py-3 rounded-2xl border border-gray-200 text-xs sm:text-sm font-mono tracking-wider uppercase focus:outline-hidden focus:ring-2 focus:ring-teal-400 bg-[#FAF9F6]/40"
                 />
               </div>
-              <button
-                type="submit"
-                disabled={isSearching || !searchFriendId.trim()}
-                className="px-5 py-3 rounded-2xl bg-teal-500 hover:bg-teal-600 text-white font-semibold text-xs sm:text-sm transition-colors shadow-xs disabled:opacity-50 flex items-center gap-1.5 shrink-0"
-              >
-                {isSearching ? 'Đang tìm...' : 'Tìm kiếm'}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={isSearching || !searchFriendId.trim()}
+                  className="flex-1 sm:flex-initial px-4 sm:px-5 py-3 rounded-2xl bg-teal-600 hover:bg-teal-700 text-white font-medium text-xs sm:text-sm transition-colors shadow-xs disabled:opacity-50 flex items-center justify-center gap-1.5 shrink-0"
+                >
+                  <Search className="w-4 h-4" />
+                  <span>{isSearching ? 'Đang tìm...' : 'Tìm kiếm'}</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={actionLoading || !searchFriendId.trim()}
+                  onClick={() => handleAddFriend(searchFriendId.trim())}
+                  className="flex-1 sm:flex-initial px-4 sm:px-5 py-3 rounded-2xl bg-[#E89874] hover:bg-[#D78460] text-white font-medium text-xs sm:text-sm transition-colors shadow-xs disabled:opacity-50 flex items-center justify-center gap-1.5 shrink-0"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  <span>{actionLoading ? 'Đang thêm...' : 'Kết bạn ngay'}</span>
+                </button>
+              </div>
             </form>
 
-            {/* Notification if request sent */}
+            {/* Notification if request sent or friend added */}
             {requestSentNotice && (
-              <div className="mt-4 p-3 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-800 text-xs flex items-center gap-2">
+              <div className="mt-4 p-3.5 rounded-2xl bg-emerald-50 border border-emerald-100/80 text-emerald-800 text-xs flex items-center gap-2 animate-fadeIn">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>{requestSentNotice}</span>
+                <span className="font-medium">{requestSentNotice}</span>
               </div>
             )}
 
@@ -711,12 +789,12 @@ export const FriendsView: React.FC = () => {
             {searchResult && (
               <div className="mt-5 pt-5 border-t border-gray-100">
                 {!searchResult.found ? (
-                  <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-100 text-amber-800 text-xs flex items-center gap-2.5">
+                  <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-150 text-amber-800 text-xs flex items-center gap-2.5">
                     <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
                     <span>{searchResult.message || 'Không tìm thấy người dùng với mã này.'}</span>
                   </div>
                 ) : searchResult.user ? (
-                  <div className="p-4 rounded-2xl bg-teal-50/50 border border-teal-150 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="p-4 rounded-2xl bg-[#FAF9F6] border border-teal-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
                       <UserAvatar
                         avatar={searchResult.user.avatar}
@@ -736,19 +814,19 @@ export const FriendsView: React.FC = () => {
                       </div>
                     </div>
 
-                    <div>
+                    <div className="flex flex-wrap items-center gap-2">
                       {searchResult.isSelf ? (
                         <span className="text-xs text-gray-500 italic bg-gray-100 px-3 py-1.5 rounded-xl">
                           Đây là mã của chính bạn
                         </span>
                       ) : searchResult.isFriend ? (
-                        <span className="inline-flex items-center gap-1 text-xs text-teal-700 bg-teal-100/70 font-semibold px-3 py-1.5 rounded-xl">
-                          <Check className="w-3.5 h-3.5" />
+                        <span className="inline-flex items-center gap-1.5 text-xs text-teal-700 bg-teal-100/80 font-semibold px-3.5 py-2 rounded-xl">
+                          <Check className="w-4 h-4" />
                           <span>Đã là bạn bè</span>
                         </span>
                       ) : searchResult.hasPendingRequest ? (
-                        <span className="inline-flex items-center gap-1 text-xs text-amber-700 bg-amber-100 font-semibold px-3 py-1.5 rounded-xl">
-                          <Clock className="w-3.5 h-3.5" />
+                        <span className="inline-flex items-center gap-1.5 text-xs text-amber-700 bg-amber-100 font-semibold px-3.5 py-2 rounded-xl">
+                          <Clock className="w-4 h-4" />
                           <span>
                             {searchResult.requestDirection === 'incoming'
                               ? 'Bạn ấy đã gửi lời mời cho bạn'
@@ -756,15 +834,26 @@ export const FriendsView: React.FC = () => {
                           </span>
                         </span>
                       ) : (
-                        <button
-                          type="button"
-                          disabled={actionLoading}
-                          onClick={() => handleSendRequest(searchResult.user!.friend_id)}
-                          className="w-full sm:w-auto px-4 py-2 rounded-xl bg-teal-500 hover:bg-teal-600 text-white font-semibold text-xs shadow-xs transition-colors flex items-center justify-center gap-1.5"
-                        >
-                          <UserPlus className="w-3.5 h-3.5" />
-                          <span>Gửi lời mời kết bạn</span>
-                        </button>
+                        <div className="flex gap-2 w-full sm:w-auto">
+                          <button
+                            type="button"
+                            disabled={actionLoading}
+                            onClick={() => handleAddFriend(searchResult.user!.friend_id)}
+                            className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-medium text-xs shadow-xs transition-colors flex items-center justify-center gap-1.5"
+                          >
+                            <UserPlus className="w-3.5 h-3.5" />
+                            <span>Kết bạn ngay</span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={actionLoading}
+                            onClick={() => handleSendRequest(searchResult.user!.friend_id)}
+                            className="flex-1 sm:flex-initial px-3.5 py-2.5 rounded-xl bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 font-medium text-xs transition-colors flex items-center justify-center gap-1.5"
+                          >
+                            <Clock className="w-3.5 h-3.5 text-gray-400" />
+                            <span>Gửi lời mời</span>
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -781,36 +870,62 @@ export const FriendsView: React.FC = () => {
                 Gợi ý Friend ID để thử nghiệm ngay
               </h4>
             </div>
-            <p className="text-xs text-gray-500 mb-3">
-              Bạn có thể nhấn vào các tài khoản mẫu dưới đây để thử tìm kiếm và gửi lời mời kết bạn:
+            <p className="text-xs text-gray-500 mb-3 leading-relaxed">
+              Bạn có thể nhấn vào các tài khoản mẫu dưới đây để thử tìm kiếm hoặc bấm <strong>Kết bạn</strong> trực tiếp:
             </p>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {[
                 { name: 'An Nhiên', id: '#5829AN', avatar: '🌸' },
                 { name: 'Minh Khang', id: '#3914MI', avatar: '🎧' },
                 { name: 'Bảo Ngọc', id: '#7218BN', avatar: '✨' }
-              ].map((seed) => (
-                <button
-                  key={seed.id}
-                  type="button"
-                  onClick={() => {
-                    setSearchFriendId(seed.id);
-                    handleSearch(undefined, seed.id);
-                  }}
-                  className="p-3 rounded-2xl bg-gray-50 hover:bg-teal-50/70 border border-gray-200/80 hover:border-teal-300 text-left transition-all group"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-lg">{seed.avatar}</span>
-                    <span className="text-xs font-semibold text-gray-800 group-hover:text-teal-700">
-                      {seed.name}
-                    </span>
+              ].map((seed) => {
+                const isAlreadyFriend = friends.some(
+                  (f) => f.friend_id.toUpperCase() === seed.id.toUpperCase() || f.nickname === seed.name
+                );
+                return (
+                  <div
+                    key={seed.id}
+                    className="p-3.5 rounded-2xl bg-[#FAF9F6] hover:bg-teal-50/40 border border-gray-150 hover:border-teal-300/70 transition-all flex flex-col justify-between gap-3 group"
+                  >
+                    <div
+                      className="cursor-pointer"
+                      onClick={() => {
+                        setSearchFriendId(seed.id);
+                        handleSearch(undefined, seed.id);
+                      }}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xl">{seed.avatar}</span>
+                        <span className="text-xs font-semibold text-gray-800 group-hover:text-teal-700">
+                          {seed.name}
+                        </span>
+                      </div>
+                      <div className="font-mono text-[11px] text-gray-500 group-hover:text-teal-600">
+                        {seed.id}
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-gray-200/50 flex items-center justify-between">
+                      {isAlreadyFriend ? (
+                        <span className="text-[11px] text-teal-700 font-semibold flex items-center gap-1">
+                          <Check className="w-3 h-3" /> Đã kết bạn
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={actionLoading}
+                          onClick={() => handleAddFriend(seed.id)}
+                          className="w-full py-1.5 px-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-[11px] font-medium transition-colors flex items-center justify-center gap-1 shadow-2xs"
+                        >
+                          <UserPlus className="w-3 h-3" />
+                          <span>Kết bạn ngay</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div className="font-mono text-[11px] text-gray-500 group-hover:text-teal-600">
-                    {seed.id}
-                  </div>
-                </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>

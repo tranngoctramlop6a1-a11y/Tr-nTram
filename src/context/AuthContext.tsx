@@ -2,10 +2,13 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 
 export interface AuthUser {
   id: string;
-  email: string;
+  email?: string;
   nickname: string;
   avatar: string;
-  createdAt: string;
+  friend_id: string;
+  created_at: string;
+  createdAt?: string;
+  friendCount?: number;
 }
 
 interface AuthContextType {
@@ -72,14 +75,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const activeEmail = localStorage.getItem(ACTIVE_USER_EMAIL_KEY);
       if (activeEmail) {
         const savedUser = localStorage.getItem(getUserStorageKey(activeEmail));
-        if (savedUser) return JSON.parse(savedUser);
+        if (savedUser) {
+          const parsed = JSON.parse(savedUser);
+          if (!parsed.friend_id) {
+            parsed.friend_id = (parsed.email || activeEmail).split('@')[0].replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase() + '1001';
+          }
+          if (!parsed.created_at) {
+            parsed.created_at = parsed.createdAt || new Date().toISOString();
+          }
+          return parsed;
+        }
       }
       // Fallback kiểm tra dữ liệu cũ nếu có
       const legacySaved = localStorage.getItem('teen_user_data');
       if (legacySaved) {
         const parsed = JSON.parse(legacySaved);
         if (parsed?.email) {
-          localStorage.setItem(getUserStorageKey(parsed.email), legacySaved);
+          if (!parsed.friend_id) {
+            parsed.friend_id = parsed.email.split('@')[0].replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase() + '1001';
+          }
+          if (!parsed.created_at) {
+            parsed.created_at = parsed.createdAt || new Date().toISOString();
+          }
+          localStorage.setItem(getUserStorageKey(parsed.email), JSON.stringify(parsed));
           localStorage.setItem(ACTIVE_USER_EMAIL_KEY, parsed.email);
           localStorage.removeItem('teen_user_data');
           return parsed;
@@ -165,24 +183,59 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (existingUserData) {
         // Nếu đã có rồi, giữ nguyên thông tin cũ (nickname, avatar đã tùy chỉnh) nhưng cập nhật token
         userData = JSON.parse(existingUserData);
+        if (!userData.friend_id) {
+          userData.friend_id = cleanEmail.split('@')[0].replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase() + '1001';
+        }
+        if (!userData.created_at) {
+          userData.created_at = userData.createdAt || new Date().toISOString();
+        }
       } else {
         // Nếu là lần đầu đăng nhập bằng Gmail này
         isNewUser = true;
+        const generatedFriendId = cleanEmail.split('@')[0].replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase() + Math.floor(1000 + Math.random() * 9000);
         userData = {
           id,
           email: cleanEmail,
           nickname: name || cleanEmail.split('@')[0],
           avatar: picture,
+          friend_id: generatedFriendId,
+          created_at: new Date().toISOString(),
           createdAt: new Date().toISOString()
         };
       }
 
-      localStorage.setItem(TOKEN_KEY, 'mock_token_' + Date.now());
+      let activeToken = 'mock_token_' + Date.now();
+
+      // Đồng bộ phiên đăng nhập với máy chủ để xác thực API Bạn bè và Đồng hành
+      try {
+        const authRes = await fetch('/api/auth/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: cleanEmail,
+            suggestedNickname: userData.nickname,
+            suggestedAvatar: userData.avatar
+          })
+        });
+        if (authRes.ok) {
+          const authData = await authRes.json();
+          if (authData.token) {
+            activeToken = authData.token;
+          }
+          if (authData.user?.friend_id) {
+            userData.friend_id = authData.user.friend_id;
+          }
+        }
+      } catch (err) {
+        console.warn('Không thể kết nối API xác thực máy chủ, sử dụng phiên cục bộ:', err);
+      }
+
+      localStorage.setItem(TOKEN_KEY, activeToken);
       localStorage.setItem(WELCOMED_KEY, 'account');
       localStorage.setItem(ACTIVE_USER_EMAIL_KEY, cleanEmail);
       localStorage.setItem(userKey, JSON.stringify(userData));
 
-      setToken('mock_token_' + Date.now());
+      setToken(activeToken);
       setUser(userData);
       setIsGuest(false);
       setIsWelcomeModalOpen(false);
