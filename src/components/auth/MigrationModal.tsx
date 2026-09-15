@@ -37,10 +37,10 @@ export const MigrationModal: React.FC = () => {
               <CloudUpload className="w-7 h-7" />
             </div>
             <h3 className="text-lg sm:text-xl font-bold text-gray-800">
-              Đồng bộ dữ liệu nhật ký?
+              Đồng bộ toàn bộ dữ liệu vào tài khoản?
             </h3>
             <p className="text-xs sm:text-sm text-gray-600 mt-2 leading-relaxed">
-              Chúng mình tìm thấy <strong className="text-teal-600">{guestJournalCount} bài viết</strong> bạn đã viết trên trình duyệt này. Bạn có muốn lưu đồng bộ vào tài khoản để bảo vệ an toàn không?
+              Chúng mình tìm thấy dữ liệu bạn đã tạo ở chế độ khách (nhật ký, mầm cây cảm xúc, kết quả trắc nghiệm và bức thư). Bạn có muốn gộp vào tài khoản mới để lưu trữ an toàn và khôi phục khi đổi thiết bị không?
             </p>
           </div>
 

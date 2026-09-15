@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { migrateAllGuestDataToUser, syncUserProgressFromServer } from '../utils/userProgressStore';
 
 export interface AuthUser {
   id: string;
@@ -121,18 +122,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user]);
 
   const checkGuestJournals = useCallback(() => {
+    let total = 0;
     try {
-      const raw = localStorage.getItem(GUEST_JOURNAL_KEY);
-      if (raw) {
-        const entries = JSON.parse(raw);
-        if (Array.isArray(entries) && entries.length > 0) {
-          setGuestJournalCount(entries.length);
-          return entries.length;
-        }
+      const rawJournals = localStorage.getItem(GUEST_JOURNAL_KEY);
+      if (rawJournals) {
+        const entries = JSON.parse(rawJournals);
+        if (Array.isArray(entries)) total += entries.length;
+      }
+      const rawLetters = localStorage.getItem('self_letters_list_guest');
+      if (rawLetters) {
+        const letters = JSON.parse(rawLetters);
+        if (Array.isArray(letters)) total += letters.length;
+      }
+      const rawSeeds = localStorage.getItem('teen_plant_guest_seeds');
+      if (rawSeeds) {
+        const seeds = JSON.parse(rawSeeds);
+        if (Array.isArray(seeds)) total += seeds.length;
+      }
+      const rawProgress = localStorage.getItem('teen_user_progress_guest');
+      if (rawProgress) {
+        const prog = JSON.parse(rawProgress);
+        if (prog?.quizHistory?.length) total += prog.quizHistory.length;
       }
     } catch {}
-    setGuestJournalCount(0);
-    return 0;
+    setGuestJournalCount(total);
+    return total;
   }, []);
 
   const enterAsGuest = useCallback(() => {
@@ -173,6 +187,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsWelcomeModalOpen(false);
     setIsLoginModalOpen(false);
 
+    // Sync remote user progress from server
+    syncUserProgressFromServer(userData.id, activeToken).catch(() => {});
+
     window.dispatchEvent(
       new CustomEvent('teen_account_changed', {
         detail: { action: 'login', userId: userData.id }
@@ -181,10 +198,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (isNewUser) {
       setIsNicknameModalOpen(true);
-      const count = checkGuestJournals();
-      if (count > 0) {
-        setTimeout(() => setIsMigrationModalOpen(true), 1000);
-      }
+    }
+
+    // Always check if guest has unmigrated data
+    const count = checkGuestJournals();
+    if (count > 0) {
+      setTimeout(() => setIsMigrationModalOpen(true), 1200);
     }
   }, [checkGuestJournals]);
 
@@ -480,12 +499,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user, token, logout]);
 
   const migrateGuestJournal = useCallback(async () => {
+    if (user?.id) {
+      await migrateAllGuestDataToUser(user.id, token || undefined);
+    }
     setIsMigrationModalOpen(false);
     // After migration, clear guest entries so next accounts don't see them
     localStorage.removeItem(GUEST_JOURNAL_KEY);
     setGuestJournalCount(0);
+    window.dispatchEvent(new CustomEvent('teen_progress_updated'));
+    window.dispatchEvent(new CustomEvent('teen_account_changed', { detail: { action: 'migrate', userId: user?.id } }));
     return { success: true, count: guestJournalCount };
-  }, [guestJournalCount]);
+  }, [user, token, guestJournalCount]);
 
   const declineMigration = useCallback(() => {
     setIsMigrationModalOpen(false);

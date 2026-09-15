@@ -6,6 +6,7 @@ import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import { db, UserRecord } from './server/db';
 import { classifyChatMessage, CLARIFICATION_PATTERNS } from './server/fastPathRouter';
+import { getDailyNoteForDate } from './src/data/dailyNotes';
 
 dotenv.config();
 
@@ -1473,6 +1474,213 @@ app.delete('/api/letters/:letterId', (req, res) => {
     res.status(500).json({ success: false, error: 'Lỗi khi xóa bức thư.' });
   }
 });
+
+// ============================================================================
+// DYNAMIC CONFESSIONS & COMMUNITY REST APIs
+// ============================================================================
+
+app.get('/api/confessions', (req, res) => {
+  try {
+    const category = req.query.category as string | undefined;
+    const sortBy = (req.query.sortBy as any) || 'newest';
+    const search = req.query.search as string | undefined;
+    let userId: string | undefined = undefined;
+    const authHeader = req.headers.authorization;
+    if (authHeader) {
+      const authUser = db.getUserByToken(authHeader);
+      if (authUser) userId = authUser.id;
+    }
+    const bookmarkedIds = req.query.bookmarkedIds ? (req.query.bookmarkedIds as string).split(',').filter(Boolean) : [];
+
+    const confessions = db.getConfessions({
+      category,
+      sortBy,
+      search,
+      userId,
+      bookmarkedIds
+    });
+    res.json({ success: true, confessions });
+  } catch (error) {
+    console.error('Error fetching confessions:', error);
+    res.status(500).json({ success: false, error: 'Không thể tải bài viết.' });
+  }
+});
+
+app.post('/api/confessions', (req, res) => {
+  try {
+    const { title, content, category, isAnonymous } = req.body;
+    if (!title || !content) {
+      return res.status(400).json({ success: false, error: 'Tiêu đề và nội dung không được để trống.' });
+    }
+    let author = 'Người bạn nhỏ';
+    let avatarSeed = 'guest_avatar_' + Math.floor(Math.random() * 1000);
+    let authorType: 'user' | 'ai' = 'user';
+    const authHeader = req.headers.authorization;
+    if (authHeader) {
+      const user = db.getUserByToken(authHeader);
+      if (user) {
+        author = user.nickname;
+        avatarSeed = user.avatar;
+      }
+    }
+    const record = db.createConfession({
+      title,
+      content,
+      category,
+      author,
+      avatarSeed,
+      isAnonymous: !!isAnonymous,
+      authorType
+    });
+    res.json({ success: true, confession: record });
+  } catch (error) {
+    console.error('Error creating confession:', error);
+    res.status(500).json({ success: false, error: 'Lỗi đăng bài.' });
+  }
+});
+
+app.post('/api/confessions/:id/react', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { type } = req.body; // 'empathy' | 'meToo'
+    let reactorId = req.body.reactorId || 'guest_reactor';
+    const authHeader = req.headers.authorization;
+    if (authHeader) {
+      const user = db.getUserByToken(authHeader);
+      if (user) reactorId = user.id;
+    }
+    const result = db.reactConfession(id, reactorId, type);
+    res.json(result);
+  } catch (error) {
+    console.error('Error reacting to confession:', error);
+    res.status(500).json({ success: false });
+  }
+});
+
+app.post('/api/confessions/:id/comments', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { content } = req.body;
+    if (!content || !content.trim()) {
+      return res.status(400).json({ success: false, error: 'Nội dung bình luận không được trống.' });
+    }
+    let author = 'Người bạn nhỏ';
+    let avatarSeed = 'commenter_' + Math.floor(Math.random() * 1000);
+    let authorType: 'user' | 'ai' = 'user';
+    const authHeader = req.headers.authorization;
+    if (authHeader) {
+      const user = db.getUserByToken(authHeader);
+      if (user) {
+        author = user.nickname;
+        avatarSeed = user.avatar;
+      }
+    }
+    const result = db.addConfessionComment(id, {
+      author,
+      avatarSeed,
+      content,
+      authorType
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('Error commenting confession:', error);
+    res.status(500).json({ success: false });
+  }
+});
+
+app.post('/api/confessions/:id/report', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+    const result = db.reportConfession(id, reason || 'Báo cáo vi phạm tiêu chuẩn cộng đồng');
+    res.json(result);
+  } catch (error) {
+    console.error('Error reporting confession:', error);
+    res.status(500).json({ success: false });
+  }
+});
+
+// ============================================================================
+// DAILY NOTE & COMMUNITY STICKY NOTES APIs
+// ============================================================================
+
+app.get('/api/daily-note', (req, res) => {
+  try {
+    const dateStr = (req.query.date as string) || new Date().toISOString().split('T')[0];
+    const note = getDailyNoteForDate(dateStr);
+    res.json({ success: true, note, date: dateStr });
+  } catch (error) {
+    console.error('Error fetching daily note:', error);
+    res.status(500).json({ success: false });
+  }
+});
+
+app.get('/api/sticky-notes', (req, res) => {
+  try {
+    const notes = db.getStickyNotes();
+    res.json({ success: true, notes });
+  } catch (error) {
+    res.status(500).json({ success: false });
+  }
+});
+
+app.post('/api/sticky-notes', (req, res) => {
+  try {
+    const { content, color } = req.body;
+    if (!content || !content.trim()) {
+      return res.status(400).json({ success: false, error: 'Nội dung không được để trống.' });
+    }
+    let author = 'Người bạn nhỏ';
+    let authorType: 'user' | 'ai' = 'user';
+    const authHeader = req.headers.authorization;
+    if (authHeader) {
+      const user = db.getUserByToken(authHeader);
+      if (user) author = user.nickname;
+    }
+    const note = db.createStickyNote({
+      content,
+      author,
+      authorType,
+      color
+    });
+    res.json({ success: true, note });
+  } catch (error) {
+    res.status(500).json({ success: false });
+  }
+});
+
+app.post('/api/sticky-notes/:id/like', (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = db.likeStickyNote(id);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false });
+  }
+});
+
+// ============================================================================
+// ACCOUNT PERSISTENCE / USER PROGRESS
+// ============================================================================
+
+app.get('/api/user/progress', requireAuth, (req, res) => {
+  try {
+    const progress = db.getUserProgress((req as any).user!.id);
+    res.json(progress);
+  } catch (error) {
+    res.status(500).json({ success: false });
+  }
+});
+
+app.post('/api/user/progress', requireAuth, (req, res) => {
+  try {
+    const success = db.saveUserProgress((req as any).user!.id, req.body);
+    res.json({ success });
+  } catch (error) {
+    res.status(500).json({ success: false });
+  }
+});
+
 // Serve frontend: Vite middleware in dev, static files in prod
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {

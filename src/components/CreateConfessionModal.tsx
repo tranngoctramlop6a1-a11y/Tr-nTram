@@ -61,19 +61,38 @@ export const CreateConfessionModal: React.FC<CreateConfessionModalProps> = ({
       return;
     }
 
+    const now = new Date().toISOString();
     const newConf: Confession = {
       id: `conf-${Date.now()}`,
       title: title.trim(),
       content: content.trim(),
       category,
       author: isAnonymous ? authorNickname : (authorNickname || 'Bạn nhỏ ẩn danh'),
+      authorType: 'user',
       avatarSeed: 'seed-' + Math.floor(Math.random() * 100),
       isAnonymous,
+      createdAt: now,
       timestamp: 'Vừa xong',
       empathyCount: 1,
       meTooCount: 0,
       comments: []
     };
+
+    // Asynchronously sync with server API
+    const token = localStorage.getItem('teen_mind_auth_token') || sessionStorage.getItem('teen_mind_auth_token');
+    fetch('/api/confessions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({
+        title: newConf.title,
+        content: newConf.content,
+        category: newConf.category,
+        isAnonymous: newConf.isAnonymous
+      })
+    }).catch(() => {});
 
     onAddConfession(newConf);
 

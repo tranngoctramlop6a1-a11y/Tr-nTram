@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
-import { QUIZZES } from '../data/initialData';
-import { Quiz, QuizQuestion, QuizResultLevel } from '../types';
+import React, { useState, useEffect } from 'react';
+import { TEEN_COMPREHENSIVE_QUIZZES, ComprehensiveQuiz } from '../data/quizzesData';
+import { QuizResultLevel } from '../types';
+import { getUserProgress, recordQuizResult } from '../utils/userProgressStore';
+import { formatRealTimeAgo } from '../utils/timeAgo';
 import { 
   BrainCircuit, 
   CheckCircle2, 
@@ -10,23 +12,47 @@ import {
   ShieldAlert, 
   HelpCircle,
   Lightbulb,
-  ListOrdered
+  ListOrdered,
+  History,
+  Calendar,
+  Award,
+  BookOpen
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
-export const QuizzesView: React.FC = () => {
+interface QuizzesViewProps {
+  currentUserId?: string;
+}
+
+export const QuizzesView: React.FC<QuizzesViewProps> = ({ currentUserId }) => {
   const [activeQuizId, setActiveQuizId] = useState<string | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
   const [userAnswers, setUserAnswers] = useState<Record<number, number>>({});
   const [quizCompleted, setQuizCompleted] = useState<boolean>(false);
+  const [historyTab, setHistoryTab] = useState<boolean>(false);
+  const [userProgress, setUserProgress] = useState(() => getUserProgress(currentUserId));
 
-  const activeQuiz: Quiz | undefined = QUIZZES.find((q) => q.id === activeQuizId);
+  // Sync user progress updates
+  useEffect(() => {
+    const handleUpdate = () => {
+      setUserProgress(getUserProgress(currentUserId));
+    };
+    window.addEventListener('teen_progress_updated', handleUpdate);
+    window.addEventListener('teen_account_changed', handleUpdate);
+    return () => {
+      window.removeEventListener('teen_progress_updated', handleUpdate);
+      window.removeEventListener('teen_account_changed', handleUpdate);
+    };
+  }, [currentUserId]);
+
+  const activeQuiz: ComprehensiveQuiz | undefined = TEEN_COMPREHENSIVE_QUIZZES.find((q) => q.id === activeQuizId);
 
   const handleStartQuiz = (quizId: string) => {
     setActiveQuizId(quizId);
     setCurrentQuestionIndex(0);
     setUserAnswers({});
     setQuizCompleted(false);
+    setHistoryTab(false);
   };
 
   const handleSelectAnswer = (questionId: number, score: number) => {
@@ -39,10 +65,27 @@ export const QuizzesView: React.FC = () => {
       } else {
         // Complete the quiz!
         setQuizCompleted(true);
+        const result = calculateResult(activeQuiz, updated);
+        
+        // Save to user progress store (and sync to server)
+        const scores: number[] = Object.values(updated);
+        const totalScore = scores.reduce((sum, val) => sum + val, 0);
+        const maxScore = activeQuiz.questions.length * 4;
+
+        recordQuizResult(currentUserId, {
+          quizId: activeQuiz.id,
+          quizTitle: activeQuiz.title,
+          score: totalScore,
+          maxScore: maxScore,
+          resultLevel: result.level,
+          resultTitle: result.title,
+          advice: result.actionAdvice
+        });
+
         confetti({
-          particleCount: 40,
-          spread: 60,
-          origin: { y: 0.7 }
+          particleCount: 50,
+          spread: 70,
+          origin: { y: 0.6 }
         });
       }
     }
@@ -60,19 +103,21 @@ export const QuizzesView: React.FC = () => {
   };
 
   // Calculate result level
-  const calculateResult = (quiz: Quiz): QuizResultLevel => {
-    const scores: number[] = Object.values(userAnswers) as number[];
+  const calculateResult = (quiz: ComprehensiveQuiz, answers = userAnswers): QuizResultLevel => {
+    const scores: number[] = Object.values(answers);
     const totalScore = scores.reduce((sum: number, val: number) => sum + val, 0);
     const maxScore = quiz.questions.length * 4;
     const minScore = quiz.questions.length * 1;
     const range = maxScore - minScore;
-    const normalized = (totalScore - minScore) / range; // 0 to 1
+    const normalized = range > 0 ? (totalScore - minScore) / range : 0; // 0 to 1
 
     if (normalized <= 0.25) return quiz.results.low;
     if (normalized <= 0.55) return quiz.results.medium;
     if (normalized <= 0.8) return quiz.results.high;
     return quiz.results.veryHigh;
   };
+
+  const quizHistory = userProgress.quizHistory || [];
 
   return (
     <section className="py-10 md:py-16 max-w-5xl mx-auto px-4 sm:px-6" id="section-quizzes">
@@ -85,21 +130,102 @@ export const QuizzesView: React.FC = () => {
             <span>Góc tự suy ngẫm • Thấu hiểu cảm xúc bản thân</span>
           </div>
           <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
-            Thử hiểu bản thân hơn
+            Bộ câu hỏi trắc nghiệm tâm lý học đường
           </h2>
           <p className="text-sm sm:text-base text-slate-600 max-w-2xl mx-auto leading-relaxed">
-            Các bài trắc nghiệm ngắn (5 câu) giúp bạn nhận diện những điều đang ảnh hưởng đến mình. Không có câu trả lời nào là xấu hay sai.
+            Mỗi bộ 10 câu hỏi tiêu chuẩn giúp bạn nhận diện những áp lực đang đè nặng và tìm ra cách tháo gỡ an toàn. Dữ liệu làm bài được lưu giữ riêng tư trên tài khoản của bạn.
           </p>
-          <p className="text-xs text-slate-600 italic bg-amber-50/80 max-w-xl mx-auto p-2.5 rounded-xl border border-amber-200/60">
+
+          {/* Tab buttons: Danh sách bài test / Lịch sử của bạn */}
+          <div className="flex items-center justify-center gap-2 pt-2">
+            <button
+              onClick={() => setHistoryTab(false)}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                !historyTab
+                  ? 'bg-rose-500 text-white shadow-xs'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              Tất cả bài trắc nghiệm (6 chủ đề)
+            </button>
+            <button
+              onClick={() => setHistoryTab(true)}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                historyTab
+                  ? 'bg-rose-500 text-white shadow-xs'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              <History className="w-3.5 h-3.5" />
+              <span>Lịch sử của bạn ({quizHistory.length})</span>
+            </button>
+          </div>
+
+          <p className="text-xs text-slate-600 italic bg-amber-50/80 max-w-xl mx-auto p-2.5 rounded-xl border border-amber-200/60 mt-3">
             ⚠️ Quan trọng: Đây là công cụ tự đánh giá giúp bạn chăm sóc bản thân, không phải chẩn đoán y tế hay bệnh lý tâm thần.
           </p>
         </div>
       )}
 
-      {/* Grid of 6 Quizzes if none active */}
-      {!activeQuizId && (
+      {/* History view */}
+      {!activeQuizId && historyTab && (
+        <div className="space-y-4 max-w-3xl mx-auto">
+          {quizHistory.length === 0 ? (
+            <div className="text-center py-16 bg-white rounded-3xl border border-dashed border-slate-200 p-8 space-y-3">
+              <History className="w-10 h-10 text-slate-300 mx-auto" />
+              <p className="text-sm font-bold text-slate-700">Bạn chưa làm bài trắc nghiệm nào.</p>
+              <p className="text-xs text-slate-500">
+                Hãy chọn một chủ đề bất kỳ để nhận diện và thấu hiểu trạng thái hiện tại của mình nhé.
+              </p>
+              <button
+                onClick={() => setHistoryTab(false)}
+                className="mt-2 px-5 py-2.5 rounded-xl bg-rose-500 text-white text-xs font-bold cursor-pointer"
+              >
+                Xem danh sách bài trắc nghiệm
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {quizHistory.map((item) => (
+                <div
+                  key={item.id}
+                  className="bg-white rounded-2xl p-5 border border-rose-100 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-sm sm:text-base text-slate-900">
+                        {item.quizTitle}
+                      </span>
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-100 text-rose-800 border border-rose-200">
+                        {item.resultTitle}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-slate-500">
+                      <span className="flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5" />
+                        {formatRealTimeAgo(item.completedAt)}
+                      </span>
+                      <span>• Điểm: {item.score}/{item.maxScore}</span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => handleStartQuiz(item.quizId)}
+                    className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold self-start sm:self-center cursor-pointer transition-colors"
+                  >
+                    Làm lại bài này
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Grid of Quizzes if none active and not on history tab */}
+      {!activeQuizId && !historyTab && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {QUIZZES.map((quiz) => (
+          {TEEN_COMPREHENSIVE_QUIZZES.map((quiz) => (
             <div
               key={quiz.id}
               className="bg-white rounded-3xl p-6 border border-rose-100 shadow-xs hover:shadow-md hover:border-rose-300 transition-all duration-200 flex flex-col justify-between space-y-4"
@@ -117,8 +243,8 @@ export const QuizzesView: React.FC = () => {
               </div>
 
               <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-                <span className="text-xs text-slate-600 font-medium">
-                  {quiz.questions.length} câu hỏi • ~2 phút
+                <span className="text-xs text-slate-500 font-medium">
+                  {quiz.questions.length} câu hỏi • ~3 phút
                 </span>
                 <button
                   onClick={() => handleStartQuiz(quiz.id)}
@@ -160,7 +286,7 @@ export const QuizzesView: React.FC = () => {
 
           {/* Question text */}
           <div className="space-y-2 pt-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
               <span>{activeQuiz.icon}</span>
               <span>{activeQuiz.title}</span>
             </span>
@@ -187,11 +313,17 @@ export const QuizzesView: React.FC = () => {
             ))}
           </div>
 
-          {/* Disclaimer reminder */}
-          <div className="pt-4 border-t border-slate-100 text-center">
-            <p className="text-[11px] text-slate-600">
-              Hãy chọn phương án tự nhiên nhất với cảm nhận của bạn lúc này.
-            </p>
+          {/* Navigation helpers */}
+          <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+            {currentQuestionIndex > 0 ? (
+              <button
+                onClick={() => setCurrentQuestionIndex(currentQuestionIndex - 1)}
+                className="text-slate-600 hover:text-slate-900 font-bold cursor-pointer"
+              >
+                ← Câu trước
+              </button>
+            ) : <span />}
+            <span>Hãy chọn đáp án phản ánh đúng nhất cảm nhận thực tế của bạn.</span>
           </div>
 
         </div>
@@ -229,7 +361,7 @@ export const QuizzesView: React.FC = () => {
                 <div className="space-y-3">
                   <h4 className="text-sm font-bold uppercase tracking-wider text-rose-700 flex items-center gap-2">
                     <Lightbulb className="w-4 h-4 text-amber-500" />
-                    <span>Gợi ý tích cực dành cho bạn:</span>
+                    <span>Gợi ý hành động cụ thể dành cho bạn:</span>
                   </h4>
                   <div className="space-y-2">
                     {result.actionAdvice.map((adv, i) => (
@@ -251,7 +383,7 @@ export const QuizzesView: React.FC = () => {
                     <span>Lời nhắc an toàn & thấu cảm:</span>
                   </span>
                   <p className="leading-relaxed">
-                    Kết quả này là gợi ý giúp bạn thấu hiểu bản thân hơn, không phải chẩn đoán y tế. Nếu bạn đang cảm thấy quá tải hoặc kiệt sức, đừng ngại chia sẻ với người lớn đáng tin cậy hoặc liên hệ Tổng đài 111.
+                    Kết quả đã được lưu tự động vào tài khoản của bạn để tiện theo dõi diễn biến tâm trạng theo thời gian. Nếu bạn cảm thấy cần người lắng nghe, hãy thử trò chuyện với Chatbot hoặc liên hệ Tổng đài Quốc gia Bảo vệ Trẻ em 111.
                   </p>
                 </div>
 
@@ -269,7 +401,7 @@ export const QuizzesView: React.FC = () => {
                     onClick={handleBackToQuizzes}
                     className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                   >
-                    <span>Khám phá 5 bài test khác</span>
+                    <span>Khám phá các bài test khác</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>

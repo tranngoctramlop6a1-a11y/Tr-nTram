@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { NavigationTab, Confession, Comment } from './types';
 import { INITIAL_CONFESSIONS as CONFESSIONS } from './data/initialData';
+import { buildDynamicConfessions } from './data/confessionsDailyData';
 import { Navbar } from './components/Navbar';
 import { HeroSection } from './components/HeroSection';
 import { DailyCheckinFlow } from './components/DailyCheckinFlow';
@@ -43,6 +44,7 @@ import {
 } from 'lucide-react';
 
 function AppContent() {
+  const { user } = useAuth();
   const [currentTab, setCurrentTab] = useState<NavigationTab>('home');
   const [activeCheckinContext, setActiveCheckinContext] = useState<{
     emotion: string;
@@ -55,14 +57,35 @@ function AppContent() {
   const [confessions, setConfessions] = useState<Confession[]>(() => {
     try {
       const stored = localStorage.getItem('teen_confessions_list');
-      if (stored) return JSON.parse(stored);
+      const parsed = stored ? JSON.parse(stored) : [];
+      return buildDynamicConfessions(new Date(), parsed);
     } catch {
-      // ignore
+      return buildDynamicConfessions(new Date(), []);
     }
-    return CONFESSIONS;
   });
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+
+  // Sync fresh confessions from server
+  useEffect(() => {
+    fetch('/api/confessions')
+      .then(r => r.json())
+      .then(data => {
+        if (data && data.success && Array.isArray(data.confessions) && data.confessions.length > 0) {
+          setConfessions(prev => {
+            const map = new Map<string, Confession>();
+            data.confessions.forEach((c: Confession) => map.set(c.id, c));
+            prev.forEach(c => {
+              if (!map.has(c.id)) map.set(c.id, c);
+            });
+            return Array.from(map.values()).sort(
+              (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+            );
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Sync confessions to localStorage
   useEffect(() => {
@@ -110,19 +133,26 @@ function AppContent() {
           const already = !!userReacted.empathy;
           return {
             ...c,
-            empathyCount: already ? c.empathyCount - 1 : c.empathyCount + 1,
+            empathyCount: already ? Math.max(0, c.empathyCount - 1) : c.empathyCount + 1,
             userReacted: { ...userReacted, empathy: !already }
           };
         } else {
           const already = !!userReacted.meToo;
           return {
             ...c,
-            meTooCount: already ? c.meTooCount - 1 : c.meTooCount + 1,
+            meTooCount: already ? Math.max(0, c.meTooCount - 1) : c.meTooCount + 1,
             userReacted: { ...userReacted, meToo: !already }
           };
         }
       })
     );
+
+    // Call server API
+    fetch(`/api/confessions/${id}/react`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type })
+    }).catch(() => {});
   };
 
   const handleAddComment = (confessionId: string, comment: Comment) => {
@@ -564,6 +594,7 @@ function AppContent() {
             onOpenCreateModal={() => setIsCreateModalOpen(true)}
             onReact={handleReactConfession}
             onAddComment={handleAddComment}
+            currentUserId={user?.id}
           />
         )}
 
@@ -571,7 +602,7 @@ function AppContent() {
         {currentTab === 'scenarios' && <ScenariosView />}
 
         {/* Tab 4: Quizzes */}
-        {currentTab === 'quizzes' && <QuizzesView />}
+        {currentTab === 'quizzes' && <QuizzesView currentUserId={user?.id} />}
 
         {/* Tab 5: Parents */}
         {currentTab === 'parents' && <ParentsView />}
@@ -585,7 +616,14 @@ function AppContent() {
         {currentTab === 'help' && <HelpView />}
 
         {/* Tab 8: Stories */}
-        {currentTab === 'stories' && <StoriesView />}
+        {currentTab === 'stories' && (
+          <StoriesView
+            onGoToJournal={(prompt) => {
+              setJournalPromptNote(prompt);
+              setCurrentTab('journal');
+            }}
+          />
+        )}
 
         {/* Tab: 🌱 Hộp cây cảm xúc */}
         {currentTab === 'plant' && <EmotionPlantView />}

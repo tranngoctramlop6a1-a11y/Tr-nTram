@@ -214,9 +214,11 @@ export interface MoodOption {
 export interface Comment {
   id: string;
   author: string;
+  authorType?: 'user' | 'ai';
   avatarSeed: string;
   content: string;
-  timestamp: string;
+  timestamp?: string;
+  createdAt?: string; // Real ISO timestamp
   likes: number;
 }
 
@@ -226,9 +228,12 @@ export interface Confession {
   content: string;
   category: 'Gia đình' | 'Học tập' | 'Tình bạn' | 'Bản thân' | 'Trường học' | 'Tình cảm' | 'Khác';
   author: string;
+  authorType?: 'user' | 'ai';
   avatarSeed: string;
   isAnonymous: boolean;
-  timestamp: string;
+  timestamp?: string;
+  createdAt?: string; // Real ISO timestamp
+  updatedAt?: string;
   empathyCount: number; // ❤️ Đồng cảm
   meTooCount: number;   // 🫂 Mình cũng từng như vậy
   comments: Comment[];
@@ -236,6 +241,8 @@ export interface Confession {
     empathy?: boolean;
     meToo?: boolean;
   };
+  isBookmarked?: boolean;
+  reportCount?: number;
 }
 
 export interface ScenarioOption {
@@ -271,6 +278,7 @@ export interface QuizResultLevel {
   badgeColor: string;
   summary: string;
   actionAdvice: string[];
+  tendencyInsight?: string;
 }
 
 export interface Quiz {

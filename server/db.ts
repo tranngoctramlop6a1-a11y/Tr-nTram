@@ -99,12 +99,55 @@ export interface SelfLetterSummary {
 
 export type LetterSummary = SelfLetterSummary;
 
+export interface ConfessionCommentRecord {
+  id: string;
+  author: string;
+  author_type: 'user' | 'ai';
+  avatar_seed: string;
+  content: string;
+  created_at: string;
+  likes: number;
+}
+
+export interface ConfessionRecord {
+  id: string;
+  title: string;
+  content: string;
+  category: 'Gia đình' | 'Học tập' | 'Tình bạn' | 'Bản thân' | 'Trường học' | 'Tình cảm' | 'Khác';
+  author: string;
+  author_type: 'user' | 'ai';
+  avatar_seed: string;
+  is_anonymous: boolean;
+  created_at: string;
+  updated_at: string;
+  empathy_count: number;
+  me_too_count: number;
+  comments: ConfessionCommentRecord[];
+  user_reactions: Record<string, { empathy?: boolean; meToo?: boolean }>;
+  report_count: number;
+  reports?: Array<{ reason: string; created_at: string }>;
+  date_key?: string;
+}
+
+export interface StickyNoteRecord {
+  id: string;
+  content: string;
+  author: string;
+  author_type: 'user' | 'ai';
+  color: string;
+  likes: number;
+  created_at: string;
+}
+
 export interface DatabaseSchema {
   users: Record<string, UserRecord>; // id -> UserRecord
   sessions: Record<string, string>;  // token -> user_id
   journals: Record<string, UserJournalRecord>; // user_id -> UserJournalRecord
   plants: Record<string, UserPlantRecord>; // user_id -> UserPlantRecord
   letters: Record<string, SelfLetterRecord>; // id -> SelfLetterRecord
+  confessions: Record<string, ConfessionRecord>; // id -> ConfessionRecord
+  stickyNotes: Record<string, StickyNoteRecord>; // id -> StickyNoteRecord
+  userProgress: Record<string, any>; // user_id -> UserProgress
 }
 
 const DB_FILE_PATH = path.join(process.cwd(), 'server_db_store.json');
@@ -122,7 +165,10 @@ class Database {
       sessions: {},
       journals: {},
       plants: {},
-      letters: {}
+      letters: {},
+      confessions: {},
+      stickyNotes: {},
+      userProgress: {}
     };
     this.load();
   }
@@ -151,7 +197,10 @@ class Database {
           sessions: parsed.sessions || {},
           journals: parsed.journals || {},
           plants: parsed.plants || {},
-          letters: parsed.letters || {}
+          letters: parsed.letters || {},
+          confessions: parsed.confessions || {},
+          stickyNotes: parsed.stickyNotes || {},
+          userProgress: parsed.userProgress || {}
         };
       }
     } catch (e) {
@@ -686,7 +735,7 @@ class Database {
 
   // Save User Plant Seeds & State (STRICTLY PERSONAL - NO FRIEND CARE)
   public saveUserPlant(userId: string, data: any): boolean {
-    const existing = this.data.plants[userId] || {};
+    const existing: Partial<UserPlantRecord> = this.data.plants[userId] || {};
     if (Array.isArray(data)) {
       this.data.plants[userId] = {
         ...existing,
@@ -886,6 +935,459 @@ class Database {
       return false;
     }
     delete this.data.letters[id];
+    this.scheduleSave();
+    return true;
+  }
+
+  // ==================== Confessions & Community ====================
+
+  public ensureDailyAiConfessions(todayStr: string): void {
+    if (!this.data.confessions) {
+      this.data.confessions = {};
+    }
+    const hasTodayAi = Object.values(this.data.confessions).some(
+      c => c.author_type === 'ai' && c.date_key === todayStr
+    );
+
+    if (!hasTodayAi) {
+      const parts = todayStr.split('-');
+      const day = parseInt(parts[2], 10) || 15;
+      const pool = [
+        {
+          title: 'Kỳ vọng điểm 9 của mẹ và tờ giấy kiểm tra điểm 6.5',
+          content: 'Hôm nay cô giáo trả bài khảo sát Toán. Nhìn thấy con số 6.5 đỏ chói ở góc bài, tự nhiên tai mình ù đi. Suốt quãng đường đạp xe về nhà, mình chỉ sợ nghe câu: "Mẹ cho con đi học thêm bao nhiêu tiền mà chỉ được thế này thôi à?". Mình biết bố mẹ vất vả vì mình, nhưng mình thấy mình đang dần nghẹt thở vì không thể hoàn hảo như kỳ vọng...',
+          category: 'Gia đình' as const,
+          empathy: 42,
+          meToo: 38
+        },
+        {
+          title: 'Cảm giác lạc lõng ngay giữa nhóm bạn thân 4 người',
+          content: 'Tụi mình chơi chung từ năm lớp 7. Nhưng dạo gần đây, 3 bạn kia lập một nhóm chat riêng khác, có những câu chuyện đùa riêng mà khi mình hỏi thì các bạn chỉ bảo: "À không có gì đâu". Đi ăn cùng nhau, các bạn cắm mặt vào điện thoại cười với nhau. Ngồi giữa các bạn mà mình thấy cô đơn hơn cả lúc ở một mình...',
+          category: 'Tình bạn' as const,
+          empathy: 56,
+          meToo: 49
+        },
+        {
+          title: 'Tự ti vì khuôn mặt dậy thì nhiều mụn và chiếc kính cận dày cộp',
+          content: 'Mỗi lần đi qua gương ở sảnh trường, mình đều cúi gằm mặt xuống. Nhìn các bạn nữ trong lớp da dẻ mịn màng, biết ăn mặc đẹp, mình thấy mình như một chú vịt xấu xí. Đôi khi có bạn nam trêu chọc một câu vô ý thôi mà mình về nhà khóc cả buổi tối...',
+          category: 'Bản thân' as const,
+          empathy: 68,
+          meToo: 72
+        },
+        {
+          title: 'Làm nhóm trưởng bài tập Sinh học: Khi một mình gánh cả team',
+          content: 'Cô giáo phân nhóm 5 người làm bài thuyết trình slide. Mình phân chia việc rõ ràng từ thứ Hai, nhưng đến tối Chủ nhật sát ngày nộp bài, 4 bạn kia vẫn "seen" không trả lời. Cuối cùng mình phải thức trắng đêm làm slide cho cả nhóm. Vừa tức vừa bất lực...',
+          category: 'Trường học' as const,
+          empathy: 61,
+          meToo: 55
+        },
+        {
+          title: 'Nỗi sợ hãi vô hình mỗi sáng trước khi bước chân vào cổng trường',
+          content: 'Không hẳn là bị bắt nạt, nhưng lớp mình có văn hóa "chia bè kéo phái" và hay soi mói từng hành động của người khác. Chỉ cần bước vào lớp là mình cảm thấy có hàng chục ánh mắt đang nhìn và thì thầm...',
+          category: 'Trường học' as const,
+          empathy: 77,
+          meToo: 64
+        },
+        {
+          title: 'Thích một bạn cùng bàn suốt một năm nhưng không dám nói',
+          content: 'Mỗi ngày đến lớp, niềm vui duy nhất là được nhìn thấy bạn ấy cười khi mình chuyền hộ cục tẩy hoặc giảng bài tập Toán. Bạn ấy tốt bụng với tất cả mọi người, nên mình sợ nếu nói ra thì ngay cả tình bạn trong sáng này cũng sẽ tan vỡ mất...',
+          category: 'Tình cảm' as const,
+          empathy: 89,
+          meToo: 82
+        }
+      ];
+
+      const startIdx = (day * 3) % pool.length;
+      const todayPosts = [
+        pool[startIdx % pool.length],
+        pool[(startIdx + 1) % pool.length],
+        pool[(startIdx + 2) % pool.length]
+      ];
+
+      const now = Date.now();
+      todayPosts.forEach((post, i) => {
+        const id = `ai_conf_${todayStr}_${i}`;
+        const createdAt = new Date(now - (i * 2 + 1) * 3600 * 1000).toISOString();
+        this.data.confessions[id] = {
+          id,
+          title: post.title,
+          content: post.content,
+          category: post.category,
+          author: 'AI Đồng Cảm',
+          author_type: 'ai',
+          avatar_seed: `ai_avatar_${i}_${day}`,
+          is_anonymous: false,
+          created_at: createdAt,
+          updated_at: createdAt,
+          empathy_count: post.empathy,
+          me_too_count: post.meToo,
+          comments: [],
+          user_reactions: {},
+          report_count: 0,
+          date_key: todayStr
+        };
+      });
+
+      // Baseline user posts
+      const baselineUserPosts = [
+        {
+          id: 'user_conf_base_1',
+          title: 'Hôm nay mình đã dũng cảm xin lỗi mẹ trước',
+          content: 'Tối qua hai mẹ con cãi nhau vì mẹ bắt mình tắt máy tính đi ngủ sớm trong khi bài tập chưa xong. Sáng nay tỉnh dậy, thấy mẹ vẫn dậy sớm nấu xôi cho mình. Mình bước lại ôm mẹ và nói: "Con xin lỗi mẹ, tối qua con nói năng hơi hỗn". Mẹ cười và bảo ăn nhanh kẻo nguội. Thật nhẹ nhõm!',
+          category: 'Gia đình' as const,
+          author: 'Tuệ Mẫn',
+          avatar_seed: 'man_tue',
+          empathy_count: 135,
+          me_too_count: 64,
+          hours_ago: 8
+        },
+        {
+          id: 'user_conf_base_2',
+          title: 'Bí kíp nhỏ cho bạn nào đang bị mất tập trung khi ôn thi',
+          content: 'Mỗi lần học bài, mình để điện thoại ở phòng khác và dùng đồng hồ đếm ngược 25 phút (phương pháp Pomodoro). Học hết 25 phút thì đứng dậy vươn vai, uống nước 5 phút. Nhờ vậy mà tuần này mình giải xong hết 3 đề Hóa mà không bị mỏi mắt hay lướt TikTok vô thức nữa!',
+          category: 'Học tập' as const,
+          author: 'Quốc Việt',
+          avatar_seed: 'viet_quoc',
+          empathy_count: 118,
+          me_too_count: 92,
+          hours_ago: 18
+        },
+        {
+          id: 'user_conf_base_3',
+          title: 'Mình học cách chấp nhận rằng mình không thể làm vừa lòng tất cả',
+          content: 'Trước đây ai nhờ gì mình cũng nhận vì sợ bị ghét. Kết quả là mình kiệt sức và luôn lo âu. Tháng này mình bắt đầu từ chối những lời rủ rê mà mình không thích. Hóa ra trời không sập xuống, mà mình lại có thêm thời gian cho chính mình.',
+          category: 'Bản thân' as const,
+          author: 'Ngọc Lan',
+          avatar_seed: 'lan_ngoc',
+          empathy_count: 142,
+          me_too_count: 120,
+          hours_ago: 36
+        }
+      ];
+
+      baselineUserPosts.forEach(bp => {
+        if (!this.data.confessions[bp.id]) {
+          const createdAt = new Date(now - bp.hours_ago * 3600 * 1000).toISOString();
+          this.data.confessions[bp.id] = {
+            id: bp.id,
+            title: bp.title,
+            content: bp.content,
+            category: bp.category,
+            author: bp.author,
+            author_type: 'user',
+            avatar_seed: bp.avatar_seed,
+            is_anonymous: false,
+            created_at: createdAt,
+            updated_at: createdAt,
+            empathy_count: bp.empathy_count,
+            me_too_count: bp.me_too_count,
+            comments: [],
+            user_reactions: {},
+            report_count: 0
+          };
+        }
+      });
+
+      this.scheduleSave();
+    }
+  }
+
+  public getConfessions(options: {
+    category?: string;
+    sortBy?: 'newest' | 'hot' | 'bookmarked';
+    search?: string;
+    userId?: string;
+    bookmarkedIds?: string[];
+  }): any[] {
+    const todayStr = new Date().toISOString().split('T')[0];
+    this.ensureDailyAiConfessions(todayStr);
+
+    let list = Object.values(this.data.confessions || {});
+
+    // Filter by category
+    if (options.category && options.category !== 'Tất cả') {
+      list = list.filter(c => c.category === options.category);
+    }
+
+    // Filter by search query
+    if (options.search && options.search.trim()) {
+      const q = options.search.toLowerCase().trim();
+      list = list.filter(c => c.title.toLowerCase().includes(q) || c.content.toLowerCase().includes(q));
+    }
+
+    // Filter by bookmarked
+    if (options.sortBy === 'bookmarked' && options.bookmarkedIds) {
+      const bSet = new Set(options.bookmarkedIds);
+      list = list.filter(c => bSet.has(c.id));
+    }
+
+    // Sort
+    if (options.sortBy === 'hot') {
+      list.sort((a, b) => {
+        const scoreA = (a.empathy_count || 0) * 1.5 + (a.me_too_count || 0) + (a.comments?.length || 0) * 2;
+        const scoreB = (b.empathy_count || 0) * 1.5 + (b.me_too_count || 0) + (b.comments?.length || 0) * 2;
+        return scoreB - scoreA;
+      });
+    } else {
+      // Default: newest first
+      list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    }
+
+    // Map to client format
+    return list.map(c => ({
+      id: c.id,
+      title: c.title,
+      content: c.content,
+      category: c.category,
+      author: c.author,
+      authorType: c.author_type,
+      avatarSeed: c.avatar_seed,
+      isAnonymous: c.is_anonymous,
+      createdAt: c.created_at,
+      updatedAt: c.updated_at,
+      empathyCount: c.empathy_count,
+      meTooCount: c.me_too_count,
+      comments: (c.comments || []).map(cm => ({
+        id: cm.id,
+        author: cm.author,
+        authorType: cm.author_type,
+        avatarSeed: cm.avatar_seed,
+        content: cm.content,
+        createdAt: cm.created_at,
+        likes: cm.likes
+      })),
+      userReacted: options.userId ? (c.user_reactions?.[options.userId] || {}) : {},
+      isBookmarked: options.bookmarkedIds?.includes(c.id) || false
+    }));
+  }
+
+  public createConfession(data: {
+    title: string;
+    content: string;
+    category: any;
+    author: string;
+    avatarSeed?: string;
+    isAnonymous?: boolean;
+    authorType?: 'user' | 'ai';
+  }): ConfessionRecord {
+    if (!this.data.confessions) {
+      this.data.confessions = {};
+    }
+    const id = 'conf_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 6);
+    const now = new Date().toISOString();
+
+    const record: ConfessionRecord = {
+      id,
+      title: data.title.trim(),
+      content: data.content.trim(),
+      category: data.category || 'Khác',
+      author: data.isAnonymous ? 'Bạn ẩn danh' : (data.author?.trim() || 'Người bạn nhỏ'),
+      author_type: data.authorType || 'user',
+      avatar_seed: data.avatarSeed || ('user_' + Math.random().toString(36).substring(2, 6)),
+      is_anonymous: !!data.isAnonymous,
+      created_at: now,
+      updated_at: now,
+      empathy_count: 1, // Author's initial feeling
+      me_too_count: 0,
+      comments: [],
+      user_reactions: {},
+      report_count: 0,
+      date_key: now.split('T')[0]
+    };
+
+    this.data.confessions[id] = record;
+    this.scheduleSave();
+    return record;
+  }
+
+  public reactConfession(id: string, reactorId: string, type: 'empathy' | 'meToo'): { success: boolean; record?: any } {
+    if (!this.data.confessions || !this.data.confessions[id]) {
+      return { success: false };
+    }
+    const conf = this.data.confessions[id];
+    if (!conf.user_reactions) conf.user_reactions = {};
+    const userReact = conf.user_reactions[reactorId] || {};
+
+    if (type === 'empathy') {
+      if (userReact.empathy) {
+        userReact.empathy = false;
+        conf.empathy_count = Math.max(0, (conf.empathy_count || 1) - 1);
+      } else {
+        userReact.empathy = true;
+        conf.empathy_count = (conf.empathy_count || 0) + 1;
+      }
+    } else if (type === 'meToo') {
+      if (userReact.meToo) {
+        userReact.meToo = false;
+        conf.me_too_count = Math.max(0, (conf.me_too_count || 1) - 1);
+      } else {
+        userReact.meToo = true;
+        conf.me_too_count = (conf.me_too_count || 0) + 1;
+      }
+    }
+
+    conf.user_reactions[reactorId] = userReact;
+    this.scheduleSave();
+    return {
+      success: true,
+      record: {
+        id: conf.id,
+        empathyCount: conf.empathy_count,
+        meTooCount: conf.me_too_count,
+        userReacted: userReact
+      }
+    };
+  }
+
+  public addConfessionComment(id: string, comment: {
+    author: string;
+    authorType?: 'user' | 'ai';
+    avatarSeed?: string;
+    content: string;
+  }): { success: boolean; comment?: any } {
+    if (!this.data.confessions || !this.data.confessions[id]) {
+      return { success: false };
+    }
+    const conf = this.data.confessions[id];
+    if (!conf.comments) conf.comments = [];
+
+    const newComm: ConfessionCommentRecord = {
+      id: 'comm_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 6),
+      author: comment.author.trim() || 'Người bạn ẩn danh',
+      author_type: comment.authorType || 'user',
+      avatar_seed: comment.avatarSeed || 'commenter_seed',
+      content: comment.content.trim(),
+      created_at: new Date().toISOString(),
+      likes: 0
+    };
+
+    conf.comments.push(newComm);
+    this.scheduleSave();
+    return { success: true, comment: newComm };
+  }
+
+  public reportConfession(id: string, reason: string): { success: boolean; reportCount?: number } {
+    if (!this.data.confessions || !this.data.confessions[id]) {
+      return { success: false };
+    }
+    const conf = this.data.confessions[id];
+    conf.report_count = (conf.report_count || 0) + 1;
+    if (!conf.reports) conf.reports = [];
+    conf.reports.push({ reason, created_at: new Date().toISOString() });
+
+    this.scheduleSave();
+    return { success: true, reportCount: conf.report_count };
+  }
+
+  // ==================== Sticky Notes ("Bạn không cô đơn") ====================
+
+  public getStickyNotes(): StickyNoteRecord[] {
+    if (!this.data.stickyNotes) {
+      this.data.stickyNotes = {};
+    }
+    // If empty, initialize gentle baseline notes
+    if (Object.keys(this.data.stickyNotes).length === 0) {
+      const now = Date.now();
+      const initial: StickyNoteRecord[] = [
+        {
+          id: 'note_init_1',
+          content: 'Có thể hôm nay cậu thấy mình chẳng làm được gì, nhưng cậu vẫn đang cố gắng từng chút một mà.',
+          author: 'Minh Thư',
+          author_type: 'user',
+          color: 'bg-amber-100 text-amber-900 border-amber-200',
+          likes: 24,
+          created_at: new Date(now - 3 * 3600 * 1000).toISOString()
+        },
+        {
+          id: 'note_init_2',
+          content: 'Không phải ngày nào cũng cần phải ổn. Có những hôm chỉ cần đi qua được ngày hôm đó thôi cũng đã đủ rồi.',
+          author: 'AI Đồng Cảm',
+          author_type: 'ai',
+          color: 'bg-emerald-100 text-emerald-900 border-emerald-200',
+          likes: 45,
+          created_at: new Date(now - 8 * 3600 * 1000).toISOString()
+        },
+        {
+          id: 'note_init_3',
+          content: 'Đừng để điểm số hôm nay làm lu mờ đi lòng nhân ái và sự tử tế trong tim cậu.',
+          author: 'Quốc Bảo',
+          author_type: 'user',
+          color: 'bg-sky-100 text-sky-900 border-sky-200',
+          likes: 19,
+          created_at: new Date(now - 14 * 3600 * 1000).toISOString()
+        }
+      ];
+      initial.forEach(n => {
+        this.data.stickyNotes[n.id] = n;
+      });
+      this.scheduleSave();
+    }
+
+    return Object.values(this.data.stickyNotes).sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  }
+
+  public createStickyNote(data: {
+    content: string;
+    author: string;
+    authorType?: 'user' | 'ai';
+    color?: string;
+  }): StickyNoteRecord {
+    if (!this.data.stickyNotes) this.data.stickyNotes = {};
+    const id = 'note_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 6);
+    const colors = [
+      'bg-amber-100 text-amber-900 border-amber-200',
+      'bg-rose-100 text-rose-900 border-rose-200',
+      'bg-sky-100 text-sky-900 border-sky-200',
+      'bg-emerald-100 text-emerald-900 border-emerald-200',
+      'bg-purple-100 text-purple-900 border-purple-200'
+    ];
+    const chosenColor = data.color || colors[Math.floor(Math.random() * colors.length)];
+
+    const record: StickyNoteRecord = {
+      id,
+      content: data.content.trim(),
+      author: data.author.trim() || 'Người bạn nhỏ',
+      author_type: data.authorType || 'user',
+      color: chosenColor,
+      likes: 1,
+      created_at: new Date().toISOString()
+    };
+    this.data.stickyNotes[id] = record;
+    this.scheduleSave();
+    return record;
+  }
+
+  public likeStickyNote(id: string): { success: boolean; likes?: number } {
+    if (!this.data.stickyNotes || !this.data.stickyNotes[id]) return { success: false };
+    const n = this.data.stickyNotes[id];
+    n.likes = (n.likes || 0) + 1;
+    this.scheduleSave();
+    return { success: true, likes: n.likes };
+  }
+
+  // ==================== User Progress Persistence ====================
+
+  public getUserProgress(userId: string): any {
+    if (!this.data.userProgress) this.data.userProgress = {};
+    return this.data.userProgress[userId] || {
+      bookmarkedConfessionIds: [],
+      scenarioHistory: [],
+      quizHistory: [],
+      fastMathBestScore: 0,
+      userReactions: {},
+      updatedAt: new Date().toISOString()
+    };
+  }
+
+  public saveUserProgress(userId: string, progress: any): boolean {
+    if (!this.data.userProgress) this.data.userProgress = {};
+    this.data.userProgress[userId] = {
+      ...this.data.userProgress[userId],
+      ...progress,
+      updated_at: new Date().toISOString()
+    };
     this.scheduleSave();
     return true;
   }
