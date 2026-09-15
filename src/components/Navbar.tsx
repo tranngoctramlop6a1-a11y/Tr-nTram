@@ -86,12 +86,6 @@ export const Navbar: React.FC<NavbarProps> = ({
       label: 'Góc tâm sự', 
       icon: <MessageCircleHeart className="w-4 h-4 text-rose-500" />,
       category: 'community'
-    },
-    { 
-      id: 'friends', 
-      label: 'Bạn bè', 
-      icon: <Users className="w-4 h-4 text-teal-600" />,
-      category: 'community'
     }
   ];
 
@@ -384,7 +378,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     className="flex items-center gap-1.5 px-1.5 py-0.5 sm:py-1 rounded-lg hover:bg-white/70 transition-colors cursor-pointer"
                     title="Mở hồ sơ cá nhân"
                   >
-                    <UserAvatar avatar={user.avatar} name={user.nickname} id={user.friend_id} size="xs" rounded="rounded-lg" />
+                    <UserAvatar avatar={user.avatar} name={user.nickname} id={user.id} size="xs" rounded="rounded-lg" />
                     <span className="font-serif font-bold max-w-[80px] sm:max-w-[100px] truncate">{user.nickname}</span>
                   </button>
                   <DailyAdviceSparkle popupAlign="right" />
@@ -442,10 +436,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                   }}
                   className="flex items-center gap-2.5 cursor-pointer flex-1 min-w-0"
                 >
-                  <UserAvatar avatar={user.avatar} name={user.nickname} id={user.friend_id} size="md" rounded="rounded-xl" />
+                  <UserAvatar avatar={user.avatar} name={user.nickname} id={user.id} size="md" rounded="rounded-xl" />
                   <div className="min-w-0">
                     <div className="text-xs font-serif font-bold text-[#2A1F18] truncate">{user.nickname}</div>
-                    <div className="text-[10px] font-mono text-[#8C5A4B]">{user.friend_id}</div>
+                    <div className="text-[10px] font-serif text-[#8C5A4B]">Dữ liệu đã đồng bộ</div>
                   </div>
                 </div>
 
@@ -473,7 +467,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 className="w-full p-3 rounded-2xl bg-[#3B2A1E] text-white font-serif font-bold text-xs flex items-center justify-center gap-2 shadow-sm"
               >
                 <LogIn className="w-4 h-4" />
-                <span>Đăng nhập với Google để kết bạn & lưu dữ liệu</span>
+                <span>Đăng nhập để sao lưu & đồng bộ dữ liệu</span>
               </button>
             )}
 
@@ -702,7 +696,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <div className="space-y-1">
                   {[
                     { id: 'confessions' as NavigationTab, label: 'Góc tâm sự', desc: 'Tường sẻ chia cảm xúc ẩn danh', icon: <MessageCircleHeart className="w-4 h-4 text-rose-500" /> },
-                    { id: 'friends' as NavigationTab, label: 'Bạn bè & Kết nối', desc: 'Những người bạn đồng hành', icon: <Users className="w-4 h-4 text-teal-600" /> },
                     { id: 'stories' as NavigationTab, label: 'Bạn không cô đơn', desc: 'Câu chuyện lắng lòng & đồng cảm', icon: <StickyNote className="w-4 h-4 text-blue-500" /> },
                     { id: 'parents' as NavigationTab, label: 'Gia đình', desc: 'Góc lắng nghe & cầu nối yêu thương', icon: <HeartHandshake className="w-4 h-4 text-rose-500" /> },
                     { id: 'school' as NavigationTab, label: 'Trường học', desc: 'Bạn bè, áp lực thi cử & lớp học', icon: <GraduationCap className="w-4 h-4 text-indigo-500" /> }

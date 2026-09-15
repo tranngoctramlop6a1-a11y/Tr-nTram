@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth, AVATAR_PRESETS } from '../../context/AuthContext';
-import { Sparkles, Check, Smile } from 'lucide-react';
+import { Sparkles, Check, Smile, ShieldCheck } from 'lucide-react';
 
 export const NicknameModal: React.FC = () => {
   const { user, isNicknameModalOpen, closeNicknameModal, updateProfile } = useAuth();
@@ -85,13 +85,12 @@ export const NicknameModal: React.FC = () => {
               </div>
             </div>
 
-            {/* Friend ID Preview */}
-            <div className="p-3 rounded-2xl bg-rose-50/50 border border-rose-100 flex items-center justify-between">
-              <div>
-                <div className="text-[11px] text-rose-500 font-medium">Friend ID độc nhất của bạn:</div>
-                <div className="text-sm font-bold text-rose-700 font-mono tracking-wider">{user.friend_id}</div>
+            {/* Backup & Security badge */}
+            <div className="p-3 rounded-2xl bg-teal-50/70 border border-teal-100 flex items-center gap-2.5">
+              <ShieldCheck className="w-4 h-4 text-teal-600 shrink-0" />
+              <div className="text-xs text-teal-800">
+                <span className="font-semibold">Đồng bộ an toàn:</span> Nhật ký và tiến trình của bạn sẽ được lưu bảo mật cho riêng tài khoản này.
               </div>
-              <span className="text-xs text-rose-400">Dùng để kết bạn</span>
             </div>
 
             {/* Submit button */}

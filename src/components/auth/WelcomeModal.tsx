@@ -69,10 +69,10 @@ export const WelcomeModal: React.FC = () => {
                   </div>
                   <div>
                     <div className="font-semibold text-sm sm:text-base leading-tight">
-                      Đăng nhập với Google
+                      Đăng nhập / Tạo tài khoản
                     </div>
                     <div className="text-xs text-teal-100 mt-0.5">
-                      Đăng nhập để kết bạn và lưu dữ liệu
+                      Tiếp tục với Google hoặc Email & Mật khẩu website
                     </div>
                   </div>
                 </div>

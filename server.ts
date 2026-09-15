@@ -728,7 +728,7 @@ function optionalAuth(req: express.Request, res: express.Response, next: express
   next();
 }
 
-// 1. Google Sign-In / Account Creation & Session (STRICT: Friend ID is immutable and permanent)
+// 1. Google Sign-In / Account Creation & Session (OAuth / Google Account)
 app.post('/api/auth/google', (req, res) => {
   try {
     const { google_auth_id, googleId, email, suggestedNickname, suggestedAvatar } = req.body;
@@ -747,17 +747,11 @@ app.post('/api/auth/google', (req, res) => {
 
     const token = db.createSession(user.id);
 
-    // Return safe user object (Strict privacy: NEVER expose email to other users)
+    // Return safe user object
     res.json({
       token,
       isNew,
-      user: {
-        id: user.id,
-        nickname: user.nickname,
-        avatar: user.avatar,
-        friend_id: user.friend_id,
-        created_at: user.created_at
-      }
+      user: db.getSafeUser(user)
     });
   } catch (error) {
     console.error('Error in /api/auth/google:', error);
@@ -765,19 +759,156 @@ app.post('/api/auth/google', (req, res) => {
   }
 });
 
+// 1b. Website Account Registration (Email + Dedicated Website Password)
+app.post('/api/auth/register', (req, res) => {
+  try {
+    const { email, password, nickname } = req.body;
+    if (!email || typeof email !== 'string' || !email.includes('@')) {
+      return res.status(400).json({ error: 'Vui lòng cung cấp địa chỉ email hợp lệ.' });
+    }
+    if (!password || typeof password !== 'string' || password.length < 8) {
+      return res.status(400).json({ error: 'Mật khẩu phải có ít nhất 8 ký tự.' });
+    }
+
+    const result = db.registerWithPassword({
+      email,
+      password,
+      nickname
+    });
+
+    if (result.error || !result.user) {
+      return res.status(400).json({ error: result.error || 'Đăng ký không thành công.' });
+    }
+
+    const token = db.createSession(result.user.id);
+
+    res.status(201).json({
+      success: true,
+      token,
+      user: db.getSafeUser(result.user)
+    });
+  } catch (error) {
+    console.error('Error in /api/auth/register:', error);
+    res.status(500).json({ error: 'Không thể đăng ký tài khoản.' });
+  }
+});
+
+// 1c. Website Account Login (Email + Dedicated Website Password)
+app.post('/api/auth/login', (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Vui lòng nhập đầy đủ email và mật khẩu.' });
+    }
+
+    const result = db.loginWithPassword({
+      email,
+      password
+    });
+
+    if (result.error || !result.user) {
+      return res.status(401).json({ error: result.error || 'Đăng nhập không thành công.' });
+    }
+
+    const token = db.createSession(result.user.id);
+
+    res.json({
+      success: true,
+      token,
+      user: db.getSafeUser(result.user)
+    });
+  } catch (error) {
+    console.error('Error in /api/auth/login:', error);
+    res.status(500).json({ error: 'Đăng nhập không thành công.' });
+  }
+});
+
+// 1d. Forgot Password - Request Reset Code
+app.post('/api/auth/forgot-password', (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email || typeof email !== 'string' || !email.includes('@')) {
+      return res.status(400).json({ error: 'Vui lòng nhập địa chỉ email hợp lệ.' });
+    }
+
+    const result = db.requestPasswordReset(email);
+    res.json(result);
+  } catch (error) {
+    console.error('Error in /api/auth/forgot-password:', error);
+    res.status(500).json({ error: 'Không thể gửi yêu cầu đặt lại mật khẩu.' });
+  }
+});
+
+// 1e. Reset Password with Code (Keeps UID & preserves all user data)
+app.post('/api/auth/reset-password', (req, res) => {
+  try {
+    const { email, code, newPassword } = req.body;
+    if (!email || !code || !newPassword) {
+      return res.status(400).json({ error: 'Vui lòng điền đầy đủ email, mã xác thực và mật khẩu mới.' });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: 'Mật khẩu mới phải có ít nhất 8 ký tự.' });
+    }
+
+    const result = db.resetPasswordWithCode({
+      email,
+      code,
+      newPassword
+    });
+
+    if (result.error || !result.user) {
+      return res.status(400).json({ error: result.error || 'Đặt lại mật khẩu thất bại.' });
+    }
+
+    const token = db.createSession(result.user.id);
+
+    res.json({
+      success: true,
+      message: 'Đặt lại mật khẩu thành công! Bạn có thể tiếp tục sử dụng.',
+      token,
+      user: db.getSafeUser(result.user)
+    });
+  } catch (error) {
+    console.error('Error in /api/auth/reset-password:', error);
+    res.status(500).json({ error: 'Không thể đặt lại mật khẩu.' });
+  }
+});
+
+// 1f. Change Password for logged in user (in Profile)
+app.post('/api/auth/change-password', requireAuth, (req, res) => {
+  try {
+    const user: UserRecord = (req as any).user;
+    const { currentPassword, newPassword } = req.body;
+
+    if (!newPassword || newPassword.length < 8) {
+      return res.status(400).json({ error: 'Mật khẩu mới phải có ít nhất 8 ký tự.' });
+    }
+
+    const result = db.changePassword({
+      userId: user.id,
+      newPassword,
+      currentPassword
+    });
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error || 'Đổi mật khẩu không thành công.' });
+    }
+
+    res.json({
+      success: true,
+      message: 'Đổi mật khẩu thành công!'
+    });
+  } catch (error) {
+    console.error('Error in /api/auth/change-password:', error);
+    res.status(500).json({ error: 'Không thể đổi mật khẩu.' });
+  }
+});
+
 // 2. Get current logged-in user profile
 app.get('/api/auth/me', requireAuth, (req, res) => {
   const user: UserRecord = (req as any).user;
-  const friends = db.getFriends(user.id);
   res.json({
-    user: {
-      id: user.id,
-      nickname: user.nickname,
-      avatar: user.avatar,
-      friend_id: user.friend_id,
-      created_at: user.created_at,
-      friendCount: friends.length
-    }
+    user: db.getSafeUser(user)
   });
 });
 
@@ -805,9 +936,9 @@ app.put('/api/users/profile', requireAuth, (req, res) => {
       success: true,
       user: {
         id: updated.id,
+        email: updated.email,
         nickname: updated.nickname,
         avatar: updated.avatar,
-        friend_id: updated.friend_id,
         created_at: updated.created_at
       }
     });
@@ -837,9 +968,9 @@ app.post('/api/users/avatar', requireAuth, (req, res) => {
       avatar: updated.avatar,
       user: {
         id: updated.id,
+        email: updated.email,
         nickname: updated.nickname,
         avatar: updated.avatar,
-        friend_id: updated.friend_id,
         created_at: updated.created_at
       }
     });
@@ -863,9 +994,9 @@ app.delete('/api/users/avatar', requireAuth, (req, res) => {
       avatar: '',
       user: {
         id: updated.id,
+        email: updated.email,
         nickname: updated.nickname,
         avatar: updated.avatar,
-        friend_id: updated.friend_id,
         created_at: updated.created_at
       }
     });
@@ -900,8 +1031,7 @@ app.get('/api/users/daily-advice', async (req, res) => {
         success: true,
         advice: result.advice,
         hasReadToday: result.hasReadToday,
-        date: result.date,
-        accountFriendId: user.friend_id
+        date: result.date
       });
     }
 
@@ -920,8 +1050,7 @@ app.get('/api/users/daily-advice', async (req, res) => {
       success: true,
       advice: DAILY_ADVICES[index],
       hasReadToday: false,
-      date: dateStr,
-      accountFriendId: 'guest'
+      date: dateStr
     });
   } catch (error) {
     console.error('Error in GET /api/users/daily-advice:', error);
@@ -940,246 +1069,6 @@ app.post('/api/users/daily-advice/read', requireAuth, (req, res) => {
     console.error('Error in POST /api/users/daily-advice/read:', error);
     res.status(500).json({ error: 'Không thể cập nhật trạng thái đã xem.' });
   }
-});
-
-// 6. Search user by Friend ID
-app.get('/api/friends/search', requireAuth, (req, res) => {
-  try {
-    const user: UserRecord = (req as any).user;
-    const rawQuery = (req.query.friendId || req.query.id || req.query.q || '') as string;
-    const friendIdQuery = rawQuery.trim();
-
-    if (!friendIdQuery) {
-      return res.status(400).json({ success: false, found: false, error: 'Vui lòng nhập Friend ID cần tìm.', message: 'Vui lòng nhập Friend ID cần tìm.' });
-    }
-
-    let found = db.getUserByFriendId(friendIdQuery);
-    if (!found) {
-      // Auto-check seed users so demo friends are always discoverable
-      const cleanNoHash = friendIdQuery.replace('#', '').toUpperCase();
-      if (['5829AN', '3914MI', '7218BN'].includes(cleanNoHash)) {
-        db.addFriend(user.id, friendIdQuery); // ensure initialized
-        found = db.getUserByFriendId(friendIdQuery);
-      }
-    }
-
-    if (!found) {
-      return res.json({
-        success: false,
-        found: false,
-        message: 'Không tìm thấy người dùng với Friend ID này. Bạn kiểm tra lại mã hoặc thử các mã mẫu như #5829AN, #3914MI nhé!'
-      });
-    }
-
-    const isSelf = found.id === user.id;
-    const isFriend = db.areFriends(user.id, found.id);
-    const isBlocked = db.isBlocked(user.id, found.id);
-
-    // Check pending requests
-    const requests = db.getFriendRequests(user.id);
-    const outgoingPending = requests.outgoing.some((r) => r.receiver_id === found.id);
-    const incomingPending = requests.incoming.some((r) => r.sender_id === found.id);
-
-    res.json({
-      success: true,
-      found: true,
-      user: {
-        id: found.id,
-        nickname: found.nickname,
-        avatar: found.avatar,
-        friend_id: found.friend_id
-      },
-      isSelf,
-      isFriend,
-      isBlocked,
-      hasPendingRequest: outgoingPending || incomingPending,
-      requestDirection: outgoingPending ? 'outgoing' : incomingPending ? 'incoming' : null
-    });
-  } catch (error) {
-    console.error('Error in /api/friends/search:', error);
-    res.status(500).json({ success: false, found: false, error: 'Lỗi tìm kiếm bạn bè.', message: 'Hệ thống đang bận, vui lòng thử lại.' });
-  }
-});
-
-// 7. Get Friends List
-app.get('/api/friends/list', requireAuth, (req, res) => {
-  try {
-    const user: UserRecord = (req as any).user;
-    const friends = db.getFriends(user.id);
-    res.json({ success: true, friends });
-  } catch (error) {
-    console.error('Error in /api/friends/list:', error);
-    res.status(500).json({ success: false, friends: [], error: 'Lỗi tải danh sách bạn bè.' });
-  }
-});
-
-// 7b. Add Friend Directly by Friend ID (Safe, resilient endpoint requested by user)
-app.post('/api/friends/add', requireAuth, (req, res) => {
-  try {
-    const user: UserRecord = (req as any).user;
-    const rawFriendId = req.body.friendId || req.body.friend_id || req.body.targetFriendId;
-    const friendId = (rawFriendId || '').toString().trim();
-
-    if (!friendId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Vui lòng cung cấp Friend ID cần kết bạn (ví dụ: #5829AN).'
-      });
-    }
-
-    const result = db.addFriend(user.id, friendId);
-    return res.json(result);
-  } catch (error) {
-    console.error('Error in /api/friends/add:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Hệ thống đang bận, vui lòng thử lại sau ít phút.'
-    });
-  }
-});
-
-// 8. Send Friend Request
-app.post('/api/friends/request', requireAuth, (req, res) => {
-  try {
-    const user: UserRecord = (req as any).user;
-    const rawFriendId = req.body.friend_id || req.body.friendId || req.body.targetFriendId;
-    const friend_id = (rawFriendId || '').toString().trim();
-
-    if (!friend_id) {
-      return res.status(400).json({ success: false, error: 'Friend ID không được để trống.', message: 'Friend ID không được để trống.' });
-    }
-
-    const result = db.sendFriendRequest(user.id, friend_id);
-    res.json(result);
-  } catch (error) {
-    console.error('Error in /api/friends/request:', error);
-    res.status(500).json({ success: false, error: 'Lỗi gửi lời mời kết bạn.', message: 'Không thể gửi lời mời kết bạn lúc này.' });
-  }
-});
-
-// 9. Get Friend Requests (incoming & outgoing)
-app.get('/api/friends/requests', requireAuth, (req, res) => {
-  try {
-    const user: UserRecord = (req as any).user;
-    const requests = db.getFriendRequests(user.id);
-    res.json(requests);
-  } catch (error) {
-    console.error('Error in /api/friends/requests:', error);
-    res.status(500).json({ error: 'Lỗi lấy lời mời kết bạn.' });
-  }
-});
-
-// 10. Respond to Friend Request (accept / reject)
-app.post('/api/friends/respond', requireAuth, (req, res) => {
-  try {
-    const user: UserRecord = (req as any).user;
-    const { requestId, action } = req.body;
-
-    if (!requestId || (action !== 'accept' && action !== 'reject')) {
-      return res.status(400).json({ error: 'Dữ liệu không hợp lệ.' });
-    }
-
-    const result = db.respondFriendRequest(user.id, requestId, action);
-    res.json(result);
-  } catch (error) {
-    console.error('Error in /api/friends/respond:', error);
-    res.status(500).json({ error: 'Lỗi phản hồi lời mời kết bạn.' });
-  }
-});
-
-// 11. Cancel Outgoing Friend Request
-app.post('/api/friends/cancel', requireAuth, (req, res) => {
-  try {
-    const user: UserRecord = (req as any).user;
-    const { requestId } = req.body;
-
-    if (!requestId) {
-      return res.status(400).json({ error: 'requestId không được để trống.' });
-    }
-
-    const result = db.cancelFriendRequest(user.id, requestId);
-    res.json(result);
-  } catch (error) {
-    console.error('Error in /api/friends/cancel:', error);
-    res.status(500).json({ error: 'Lỗi hủy lời mời kết bạn.' });
-  }
-});
-
-// 12. Remove Friend (Unfriend)
-app.post('/api/friends/remove', requireAuth, (req, res) => {
-  try {
-    const user: UserRecord = (req as any).user;
-    const { friendUserId } = req.body;
-
-    if (!friendUserId) {
-      return res.status(400).json({ error: 'friendUserId không được để trống.' });
-    }
-
-    const result = db.removeFriend(user.id, friendUserId);
-    res.json(result);
-  } catch (error) {
-    console.error('Error in /api/friends/remove:', error);
-    res.status(500).json({ error: 'Lỗi xóa bạn bè.' });
-  }
-});
-
-// 13. Block User
-app.post('/api/friends/block', requireAuth, (req, res) => {
-  try {
-    const user: UserRecord = (req as any).user;
-    const { targetUserId } = req.body;
-
-    if (!targetUserId) {
-      return res.status(400).json({ error: 'targetUserId không được để trống.' });
-    }
-
-    const result = db.blockUser(user.id, targetUserId);
-    res.json(result);
-  } catch (error) {
-    console.error('Error in /api/friends/block:', error);
-    res.status(500).json({ error: 'Lỗi chặn người dùng.' });
-  }
-});
-
-// 14. Unblock User
-app.post('/api/friends/unblock', requireAuth, (req, res) => {
-  try {
-    const user: UserRecord = (req as any).user;
-    const { targetUserId } = req.body;
-
-    if (!targetUserId) {
-      return res.status(400).json({ error: 'targetUserId không được để trống.' });
-    }
-
-    const result = db.unblockUser(user.id, targetUserId);
-    res.json(result);
-  } catch (error) {
-    console.error('Error in /api/friends/unblock:', error);
-    res.status(500).json({ error: 'Lỗi bỏ chặn người dùng.' });
-  }
-});
-
-// 15. Get Blocked Users
-app.get('/api/friends/blocked', requireAuth, (req, res) => {
-  try {
-    const user: UserRecord = (req as any).user;
-    const blocked = db.getBlockedUsers(user.id);
-    res.json({ blocked });
-  } catch (error) {
-    console.error('Error in /api/friends/blocked:', error);
-    res.status(500).json({ error: 'Lỗi lấy danh sách chặn.' });
-  }
-});
-
-// 16. Get Seed Friends (Demo test helper for searching)
-app.get('/api/friends/demo-list', (req, res) => {
-  res.json({
-    seedFriends: [
-      { nickname: 'An Nhiên', friend_id: '#5829AN', avatar: '🌸' },
-      { nickname: 'Minh Khang', friend_id: '#3914MI', avatar: '🎧' },
-      { nickname: 'Bảo Ngọc', friend_id: '#7218BN', avatar: '✨' }
-    ]
-  });
 });
 
 // 17. Sync User Journal (STRICTLY PRIVATE - linked only to authenticated user)
@@ -1288,9 +1177,9 @@ app.delete('/api/journal/images/:id', optionalAuth, (req, res) => {
 app.post('/api/emotion-plant/sync', requireAuth, (req, res) => {
   try {
     const user: UserRecord = (req as any).user;
-    const { seeds } = req.body;
+    const { seeds, plantState } = req.body;
 
-    db.saveUserPlant(user.id, seeds);
+    db.saveUserPlant(user.id, plantState || seeds);
     res.json({ success: true, savedAt: new Date().toISOString() });
   } catch (error) {
     console.error('Error in /api/emotion-plant/sync:', error);
@@ -1303,87 +1192,14 @@ app.get('/api/emotion-plant/my', requireAuth, (req, res) => {
   try {
     const user: UserRecord = (req as any).user;
     const data = db.getUserPlant(user.id);
-    res.json({ ...data, plant: data });
+    res.json({ 
+      success: true, 
+      seeds: data.seeds || [],
+      plant: data 
+    });
   } catch (error) {
     console.error('Error in /api/emotion-plant/my:', error);
     res.status(500).json({ error: 'Lỗi tải dữ liệu cây cảm xúc.' });
-  }
-});
-
-// 21. Get Friend's Plant for "Trông cây giúp bạn" (Strict Privacy - no personal seeds/notes)
-app.get('/api/plant/friend/:friendUserId', requireAuth, (req, res) => {
-  try {
-    const user: UserRecord = (req as any).user;
-    const { friendUserId } = req.params;
-
-    if (!friendUserId) {
-      return res.status(400).json({ error: 'friendUserId không được để trống.' });
-    }
-
-    const result = db.getFriendPlant(user.id, friendUserId);
-    if (!result.success) {
-      return res.status(403).json(result);
-    }
-
-    res.json(result);
-  } catch (error) {
-    console.error('Error in GET /api/plant/friend/:friendUserId:', error);
-    res.status(500).json({ error: 'Lỗi tải không gian trông cây của bạn.' });
-  }
-});
-
-// 22. Send Encouragement Message to Friend's Plant
-app.post('/api/plant/friend/:friendUserId/encourage', requireAuth, (req, res) => {
-  try {
-    const user: UserRecord = (req as any).user;
-    const { friendUserId } = req.params;
-    const { message, visualEffect } = req.body;
-
-    if (!friendUserId) {
-      return res.status(400).json({ error: 'friendUserId không được để trống.' });
-    }
-
-    const result = db.sendPlantEncouragement(user.id, friendUserId, message, visualEffect);
-    if (!result.success) {
-      return res.status(400).json(result);
-    }
-
-    res.json(result);
-  } catch (error) {
-    console.error('Error in POST /api/plant/friend/:friendUserId/encourage:', error);
-    res.status(500).json({ error: 'Lỗi gửi lời động viên.' });
-  }
-});
-
-// 23. Mark Encouragement Message as Read
-app.post('/api/plant/my/messages/:msgId/read', requireAuth, (req, res) => {
-  try {
-    const user: UserRecord = (req as any).user;
-    const { msgId } = req.params;
-
-    const success = db.markPlantMessageRead(user.id, msgId);
-    res.json({ success });
-  } catch (error) {
-    console.error('Error in /api/plant/my/messages/:msgId/read:', error);
-    res.status(500).json({ error: 'Lỗi đánh dấu tin nhắn.' });
-  }
-});
-
-// 24. Update User Plant Permissions
-app.put('/api/plant/my/permissions', requireAuth, (req, res) => {
-  try {
-    const user: UserRecord = (req as any).user;
-    const { allow_friends_to_care, allow_encouragement_messages } = req.body;
-
-    const updated = db.updatePlantPermissions(user.id, {
-      allow_friends_to_care,
-      allow_encouragement_messages
-    });
-
-    res.json({ success: true, permissions: updated });
-  } catch (error) {
-    console.error('Error in PUT /api/plant/my/permissions:', error);
-    res.status(500).json({ error: 'Lỗi cập nhật quyền trông cây.' });
   }
 });
 
@@ -1522,7 +1338,15 @@ app.post('/api/letters', (req, res) => {
 // GET /api/letters/summaries
 app.get('/api/letters/summaries', (req, res) => {
   try {
-    const summaries = db.getLetterSummaries();
+    const authHeader = req.headers.authorization;
+    let userId: string | undefined = undefined;
+    if (authHeader) {
+      const user = db.getUserByToken(authHeader);
+      if (user) {
+        userId = user.id;
+      }
+    }
+    const summaries = db.getLetterSummaries(userId);
     res.json({
       success: true,
       summaries

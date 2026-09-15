@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { DAILY_ADVICES, DailyAdvice } from '../src/data/dailyAdvices';
 
 export interface UserAdviceEntry {
@@ -10,31 +11,18 @@ export interface UserAdviceEntry {
 
 export interface UserRecord {
   id: string;
-  google_auth_id: string;
+  google_auth_id?: string;
   email: string;
   nickname: string;
   avatar: string;
-  friend_id: string;
+  password_hash?: string; // Salted PBKDF2 hash (NEVER stored plaintext)
+  password_salt?: string; // Cryptographic salt
+  reset_code?: string | null; // 6-digit verification code
+  reset_code_expires?: number | null; // Timestamp expiration
   created_at: string;
   last_active: string;
-  blocked_user_ids: string[];
   advice_history?: UserAdviceEntry[];
   fast_math_best_score?: number;
-}
-
-export interface FriendRequestRecord {
-  id: string;
-  sender_id: string;
-  receiver_id: string;
-  status: 'pending' | 'accepted' | 'rejected';
-  created_at: string;
-}
-
-export interface FriendshipRecord {
-  id: string;
-  user_a: string;
-  user_b: string;
-  created_at: string;
 }
 
 export interface UserJournalRecord {
@@ -44,30 +32,9 @@ export interface UserJournalRecord {
   updated_at: string;
 }
 
-export interface PlantCareMessageRecord {
-  id: string;
-  plant_owner_user_id: string;
-  sender_user_id: string;
-  sender_nickname: string;
-  sender_avatar: string;
-  sender_friend_id: string;
-  message: string;
-  visual_effect: 'flower' | 'leaf' | 'sun' | 'dew' | 'fruit';
-  created_at: string;
-  read_at?: string | null;
-}
-
-export interface PlantPermissionsRecord {
-  allow_friends_to_care: boolean;
-  allow_encouragement_messages: boolean;
-  updated_at: string;
-}
-
 export interface UserPlantRecord {
   user_id: string;
   seeds: any[];
-  permissions?: PlantPermissionsRecord;
-  messages?: PlantCareMessageRecord[];
   updated_at: string;
 }
 
@@ -135,8 +102,6 @@ export type LetterSummary = SelfLetterSummary;
 export interface DatabaseSchema {
   users: Record<string, UserRecord>; // id -> UserRecord
   sessions: Record<string, string>;  // token -> user_id
-  friend_requests: FriendRequestRecord[];
-  friendships: FriendshipRecord[];
   journals: Record<string, UserJournalRecord>; // user_id -> UserJournalRecord
   plants: Record<string, UserPlantRecord>; // user_id -> UserPlantRecord
   letters: Record<string, SelfLetterRecord>; // id -> SelfLetterRecord
@@ -144,48 +109,10 @@ export interface DatabaseSchema {
 
 const DB_FILE_PATH = path.join(process.cwd(), 'server_db_store.json');
 
-// Default seed users so users can immediately test searching and adding friends
-const SEED_USERS: UserRecord[] = [
-  {
-    id: 'usr_seed_annhien',
-    google_auth_id: 'seed_google_annhien',
-    email: 'annhien.teen@gmail.com',
-    nickname: 'An Nhiên',
-    avatar: '🌸',
-    friend_id: '#5829AN',
-    created_at: '2026-09-01T08:00:00.000Z',
-    last_active: new Date().toISOString(),
-    blocked_user_ids: []
-  },
-  {
-    id: 'usr_seed_minhkhang',
-    google_auth_id: 'seed_google_minhkhang',
-    email: 'minhkhang.teen@gmail.com',
-    nickname: 'Minh Khang',
-    avatar: '🎧',
-    friend_id: '#3914MI',
-    created_at: '2026-09-02T09:30:00.000Z',
-    last_active: new Date().toISOString(),
-    blocked_user_ids: []
-  },
-  {
-    id: 'usr_seed_baongoc',
-    google_auth_id: 'seed_google_baongoc',
-    email: 'baongoc.teen@gmail.com',
-    nickname: 'Bảo Ngọc',
-    avatar: '✨',
-    friend_id: '#7218BN',
-    created_at: '2026-09-03T10:15:00.000Z',
-    last_active: new Date().toISOString(),
-    blocked_user_ids: []
-  }
-];
-
 class Database {
   private data: DatabaseSchema;
   private saveTimeout: NodeJS.Timeout | null = null;
   // Strict unique lookup indices
-  private friendIdIndex: Map<string, string> = new Map(); // FRIEND_ID (uppercase) -> user_id
   private emailIndex: Map<string, string> = new Map();    // clean email (lowercase) -> user_id
   private googleIdIndex: Map<string, string> = new Map(); // google_auth_id -> user_id
 
@@ -193,8 +120,6 @@ class Database {
     this.data = {
       users: {},
       sessions: {},
-      friend_requests: [],
-      friendships: [],
       journals: {},
       plants: {},
       letters: {}
@@ -203,18 +128,10 @@ class Database {
   }
 
   private rebuildIndexes() {
-    this.friendIdIndex.clear();
     this.emailIndex.clear();
     this.googleIdIndex.clear();
 
     for (const user of Object.values(this.data.users)) {
-      if (!user.friend_id) {
-        user.friend_id = this.generateUniqueFriendId(user.nickname);
-      }
-      const upperFid = user.friend_id.trim().toUpperCase();
-      this.friendIdIndex.set(upperFid, user.id);
-      this.friendIdIndex.set(upperFid.replace('#', ''), user.id);
-
       if (user.email) {
         this.emailIndex.set(user.email.trim().toLowerCase(), user.id);
       }
@@ -232,83 +149,16 @@ class Database {
         this.data = {
           users: parsed.users || {},
           sessions: parsed.sessions || {},
-          friend_requests: parsed.friend_requests || [],
-          friendships: parsed.friendships || [],
           journals: parsed.journals || {},
           plants: parsed.plants || {},
           letters: parsed.letters || {}
         };
-      } else {
-        // Seed initial users
-        for (const u of SEED_USERS) {
-          this.data.users[u.id] = u;
-        }
-        this.saveSync();
       }
     } catch (e) {
-      console.warn('Could not load database file, initializing in-memory fallback:', e);
-      for (const u of SEED_USERS) {
-        this.data.users[u.id] = u;
-      }
+      console.warn('Could not load database file, initializing empty in-memory store:', e);
     }
 
-    // Initialize seed plants and messages if not present
-    this.ensureSeedPlants();
-    this.ensureSeedLetters();
     this.rebuildIndexes();
-  }
-
-  private ensureSeedPlants() {
-    // Make sure seed users have trees so users can interact with "Trông cây" right away
-    if (!this.data.plants['usr_seed_annhien']) {
-      this.data.plants['usr_seed_annhien'] = {
-        user_id: 'usr_seed_annhien',
-        seeds: [
-          { id: 's1', createdAt: '2026-09-02T10:00:00Z', drawingDataUrl: '', growthEffect: 'leaf', stageAtSowing: 1 },
-          { id: 's2', createdAt: '2026-09-04T11:00:00Z', drawingDataUrl: '', growthEffect: 'sprout', stageAtSowing: 1 },
-          { id: 's3', createdAt: '2026-09-06T14:00:00Z', drawingDataUrl: '', growthEffect: 'leaf', stageAtSowing: 2 },
-          { id: 's4', createdAt: '2026-09-08T09:00:00Z', drawingDataUrl: '', growthEffect: 'flower', stageAtSowing: 2 }
-        ],
-        permissions: { allow_friends_to_care: true, allow_encouragement_messages: true, updated_at: new Date().toISOString() },
-        messages: [
-          {
-            id: 'seed_msg_1',
-            plant_owner_user_id: 'usr_seed_annhien',
-            sender_user_id: 'usr_seed_minhkhang',
-            sender_nickname: 'Minh Khang',
-            sender_avatar: '🎧',
-            sender_friend_id: '#3914MI',
-            message: 'Chúc An Nhiên tuần này nhẹ nhàng, bớt áp lực bài vở nha!',
-            visual_effect: 'flower',
-            created_at: '2026-09-08T15:30:00.000Z',
-            read_at: null
-          }
-        ],
-        updated_at: new Date().toISOString()
-      };
-    }
-    if (!this.data.plants['usr_seed_minhkhang']) {
-      this.data.plants['usr_seed_minhkhang'] = {
-        user_id: 'usr_seed_minhkhang',
-        seeds: Array(8).fill(null).map((_, i) => ({ id: `mk_s_${i}`, createdAt: '2026-09-01T00:00:00Z', drawingDataUrl: '', growthEffect: 'leaf', stageAtSowing: 3 })),
-        permissions: { allow_friends_to_care: true, allow_encouragement_messages: true, updated_at: new Date().toISOString() },
-        messages: [
-          {
-            id: 'seed_msg_2',
-            plant_owner_user_id: 'usr_seed_minhkhang',
-            sender_user_id: 'usr_seed_annhien',
-            sender_nickname: 'An Nhiên',
-            sender_avatar: '🌸',
-            sender_friend_id: '#5829AN',
-            message: 'Hôm nào mệt thì cứ bật nhạc nghe một xíu rồi hãy làm tiếp nhé!',
-            visual_effect: 'leaf',
-            created_at: '2026-09-09T08:20:00.000Z',
-            read_at: null
-          }
-        ],
-        updated_at: new Date().toISOString()
-      };
-    }
   }
 
   private scheduleSave() {
@@ -327,77 +177,42 @@ class Database {
     }
   }
 
-  // Generate UNIQUE and PERMANENT Friend ID (e.g. #4827TR)
-  public generateUniqueFriendId(nickname: string): string {
-    const cleanNick = nickname.trim().replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-    const prefixLetters = (cleanNick.length >= 2 ? cleanNick.slice(0, 2) : 'TR').padEnd(2, 'T');
-
-    // 1. Try with nickname prefix
-    for (let attempts = 0; attempts < 500; attempts++) {
-      const randNum = Math.floor(1000 + Math.random() * 9000); // 4 digits
-      const candidate = `#${randNum}${prefixLetters}`;
-      if (!this.friendIdIndex.has(candidate) && !this.friendIdIndex.has(candidate.replace('#', ''))) {
-        return candidate;
-      }
-    }
-
-    // 2. Fallback guaranteed unique random generator
-    while (true) {
-      const randNum = Math.floor(1000 + Math.random() * 9000);
-      const l1 = String.fromCharCode(65 + Math.floor(Math.random() * 26));
-      const l2 = String.fromCharCode(65 + Math.floor(Math.random() * 26));
-      const candidate = `#${randNum}${l1}${l2}`;
-      if (!this.friendIdIndex.has(candidate) && !this.friendIdIndex.has(candidate.replace('#', ''))) {
-        return candidate;
-      }
-    }
-  }
-
   // Find user by ID
   public getUserById(id: string): UserRecord | null {
     return this.data.users[id] || null;
   }
 
-  // Find user by email (case-insensitive)
+  // Find user by Email (case-insensitive)
   public getUserByEmail(email: string): UserRecord | null {
-    if (!email) return null;
     const clean = email.trim().toLowerCase();
-    const uid = this.emailIndex.get(clean);
-    if (uid && this.data.users[uid]) {
-      return this.data.users[uid];
+    const id = this.emailIndex.get(clean);
+    if (id && this.data.users[id]) return this.data.users[id];
+
+    // Fallback search
+    for (const u of Object.values(this.data.users)) {
+      if (u.email && u.email.trim().toLowerCase() === clean) {
+        this.emailIndex.set(clean, u.id);
+        return u;
+      }
     }
-    return Object.values(this.data.users).find((u) => u.email.toLowerCase() === clean) || null;
+    return null;
   }
 
   // Find user by Google Auth ID
   public getUserByGoogleId(googleId: string): UserRecord | null {
-    if (!googleId) return null;
-    const uid = this.googleIdIndex.get(googleId);
-    if (uid && this.data.users[uid]) {
-      return this.data.users[uid];
+    const id = this.googleIdIndex.get(googleId);
+    if (id && this.data.users[id]) return this.data.users[id];
+
+    for (const u of Object.values(this.data.users)) {
+      if (u.google_auth_id === googleId) {
+        this.googleIdIndex.set(googleId, u.id);
+        return u;
+      }
     }
-    return Object.values(this.data.users).find((u) => u.google_auth_id === googleId) || null;
+    return null;
   }
 
-  // Find user by Friend ID (Strict unique lookup)
-  public getUserByFriendId(friendId: string): UserRecord | null {
-    if (!friendId) return null;
-    const target = friendId.trim().toUpperCase();
-    const targetNoHash = target.replace('#', '');
-
-    const uid = this.friendIdIndex.get(target) || this.friendIdIndex.get(targetNoHash);
-    if (uid && this.data.users[uid]) {
-      return this.data.users[uid];
-    }
-
-    return Object.values(this.data.users).find((u) => {
-      const uFid = u.friend_id.toUpperCase();
-      return uFid === target || uFid.replace('#', '') === targetNoHash;
-    }) || null;
-  }
-
-  // Create or restore user with Google
-  // STRICT RULE: FRIEND ID IS GENERATED ONLY ONCE UPON FIRST ACCOUNT CREATION AND NEVER REGENERATED!
+  // Find or create user via Google OAuth payload
   public findOrCreateGoogleUser(params: {
     google_auth_id?: string;
     email: string;
@@ -414,7 +229,6 @@ class Database {
       existing = this.getUserByGoogleId(params.google_auth_id);
     }
 
-    // IF USER ALREADY EXISTS: ALWAYS RETURN EXISTING RECORD WITH EXISTING FRIEND_ID!
     if (existing) {
       existing.last_active = new Date().toISOString();
       if (params.google_auth_id && !existing.google_auth_id) {
@@ -425,11 +239,10 @@ class Database {
       return { user: existing, isNew: false };
     }
 
-    // IF NEW USER: GENERATE UNIQUE FRIEND ID ONCE AND STORE PERMANENTLY
+    // New User creation
     const id = `usr_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
     const nickname = params.suggestedNickname?.trim() || cleanEmail.split('@')[0] || 'Bạn nhỏ';
     const avatar = params.suggestedAvatar || '🌱';
-    const friend_id = this.generateUniqueFriendId(nickname);
 
     const newUser: UserRecord = {
       id,
@@ -437,98 +250,296 @@ class Database {
       email: cleanEmail,
       nickname,
       avatar,
-      friend_id,
       created_at: new Date().toISOString(),
-      last_active: new Date().toISOString(),
-      blocked_user_ids: []
+      last_active: new Date().toISOString()
     };
 
     this.data.users[id] = newUser;
 
     // Update indexes
-    const upperFid = friend_id.toUpperCase();
-    this.friendIdIndex.set(upperFid, id);
-    this.friendIdIndex.set(upperFid.replace('#', ''), id);
     this.emailIndex.set(cleanEmail, id);
-    this.googleIdIndex.set(newUser.google_auth_id, id);
+    if (newUser.google_auth_id) {
+      this.googleIdIndex.set(newUser.google_auth_id, id);
+    }
 
     this.scheduleSave();
     return { user: newUser, isNew: true };
   }
 
+  // Cryptographic Salted PBKDF2 Password Hashing (OWASP / NIST Recommended)
+  public hashPassword(password: string, salt?: string): { hash: string; salt: string } {
+    const s = salt || crypto.randomBytes(16).toString('hex');
+    const h = crypto.pbkdf2Sync(password, s, 100000, 64, 'sha512').toString('hex');
+    return { hash: h, salt: s };
+  }
+
+  public verifyPassword(password: string, hash?: string, salt?: string): boolean {
+    if (!password || !hash || !salt) return false;
+    try {
+      const calculated = crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex');
+      const bufCalculated = Buffer.from(calculated, 'hex');
+      const bufStored = Buffer.from(hash, 'hex');
+      if (bufCalculated.length !== bufStored.length) return false;
+      return crypto.timingSafeEqual(bufCalculated, bufStored);
+    } catch {
+      return false;
+    }
+  }
+
+  // Register with Website Password
+  public registerWithPassword(params: {
+    email: string;
+    password: string;
+    nickname?: string;
+  }): { user?: UserRecord; error?: string } {
+    const cleanEmail = params.email.trim().toLowerCase();
+
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return { error: 'Email không hợp lệ.' };
+    }
+    if (!params.password || params.password.length < 8) {
+      return { error: 'Mật khẩu phải có ít nhất 8 ký tự.' };
+    }
+
+    // Check existing
+    const existing = this.getUserByEmail(cleanEmail);
+    if (existing) {
+      if (existing.password_hash) {
+        return { error: 'Email này đã có tài khoản. Vui lòng đăng nhập hoặc chọn Quên mật khẩu.' };
+      }
+      // If user previously signed in with Google, set up their website password seamlessly
+      const { hash, salt } = this.hashPassword(params.password);
+      existing.password_hash = hash;
+      existing.password_salt = salt;
+      if (params.nickname?.trim()) {
+        existing.nickname = params.nickname.trim();
+      }
+      existing.last_active = new Date().toISOString();
+      this.scheduleSave();
+      return { user: existing };
+    }
+
+    // Brand new user
+    const { hash, salt } = this.hashPassword(params.password);
+    const id = `usr_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
+    const nickname = params.nickname?.trim() || cleanEmail.split('@')[0] || 'Bạn nhỏ';
+
+    const newUser: UserRecord = {
+      id,
+      email: cleanEmail,
+      nickname,
+      avatar: '🌱',
+      password_hash: hash,
+      password_salt: salt,
+      created_at: new Date().toISOString(),
+      last_active: new Date().toISOString()
+    };
+
+    this.data.users[id] = newUser;
+    this.emailIndex.set(cleanEmail, id);
+    this.scheduleSave();
+    return { user: newUser };
+  }
+
+  // Login with Website Password
+  public loginWithPassword(params: {
+    email: string;
+    password: string;
+  }): { user?: UserRecord; error?: string } {
+    const cleanEmail = params.email.trim().toLowerCase();
+
+    if (!cleanEmail || !params.password) {
+      return { error: 'Vui lòng nhập đầy đủ email và mật khẩu.' };
+    }
+
+    const user = this.getUserByEmail(cleanEmail);
+    if (!user) {
+      return { error: 'Email hoặc mật khẩu không chính xác.' };
+    }
+
+    if (!user.password_hash || !user.password_salt) {
+      return { error: 'Tài khoản này được đăng ký qua Google. Bạn vui lòng chọn Đăng nhập với Google hoặc thiết lập mật khẩu mới qua Quên mật khẩu.' };
+    }
+
+    const isMatch = this.verifyPassword(params.password, user.password_hash, user.password_salt);
+    if (!isMatch) {
+      return { error: 'Email hoặc mật khẩu không chính xác.' };
+    }
+
+    user.last_active = new Date().toISOString();
+    this.scheduleSave();
+    return { user };
+  }
+
+  // Request password reset code
+  public requestPasswordReset(email: string): { success: boolean; resetCode?: string; message: string } {
+    const cleanEmail = email.trim().toLowerCase();
+    const user = this.getUserByEmail(cleanEmail);
+
+    if (!user) {
+      // Friendly message without leaking existence for privacy
+      return {
+        success: true,
+        message: 'Nếu email tồn tại trong hệ thống, mã xác thực đặt lại mật khẩu đã được tạo.'
+      };
+    }
+
+    // Generate secure 6-digit numeric code
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    user.reset_code = code;
+    user.reset_code_expires = Date.now() + 15 * 60 * 1000; // 15 minutes validity
+    this.scheduleSave();
+
+    return {
+      success: true,
+      resetCode: code,
+      message: 'Mã xác thực 6 chữ số đã được gửi. Mã có hiệu lực trong 15 phút.'
+    };
+  }
+
+  // Reset password using verified code (NEVER deletes user data, keeps UID intact)
+  public resetPasswordWithCode(params: {
+    email: string;
+    code: string;
+    newPassword: string;
+  }): { user?: UserRecord; error?: string } {
+    const cleanEmail = params.email.trim().toLowerCase();
+    const user = this.getUserByEmail(cleanEmail);
+
+    if (!user) {
+      return { error: 'Không tìm thấy tài khoản với email này.' };
+    }
+
+    if (!user.reset_code || !user.reset_code_expires || user.reset_code.trim() !== params.code.trim()) {
+      return { error: 'Mã xác thực không chính xác hoặc đã hết hạn.' };
+    }
+
+    if (Date.now() > user.reset_code_expires) {
+      user.reset_code = null;
+      user.reset_code_expires = null;
+      this.scheduleSave();
+      return { error: 'Mã xác thực đã hết hạn. Vui lòng yêu cầu mã mới.' };
+    }
+
+    if (!params.newPassword || params.newPassword.length < 8) {
+      return { error: 'Mật khẩu mới phải có ít nhất 8 ký tự.' };
+    }
+
+    const { hash, salt } = this.hashPassword(params.newPassword);
+    user.password_hash = hash;
+    user.password_salt = salt;
+    user.reset_code = null;
+    user.reset_code_expires = null;
+    user.last_active = new Date().toISOString();
+    this.scheduleSave();
+
+    return { user };
+  }
+
+  // Change password for logged in user
+  public changePassword(params: {
+    userId: string;
+    newPassword: string;
+    currentPassword?: string;
+  }): { success: boolean; error?: string } {
+    const user = this.getUserById(params.userId);
+    if (!user) {
+      return { success: false, error: 'Người dùng không tồn tại.' };
+    }
+
+    if (!params.newPassword || params.newPassword.length < 8) {
+      return { success: false, error: 'Mật khẩu mới phải có ít nhất 8 ký tự.' };
+    }
+
+    // If user already has password set, verify current password
+    if (user.password_hash && user.password_salt) {
+      if (!params.currentPassword) {
+        return { success: false, error: 'Vui lòng nhập mật khẩu hiện tại.' };
+      }
+      const isCurrentValid = this.verifyPassword(params.currentPassword, user.password_hash, user.password_salt);
+      if (!isCurrentValid) {
+        return { success: false, error: 'Mật khẩu hiện tại không đúng.' };
+      }
+    }
+
+    const { hash, salt } = this.hashPassword(params.newPassword);
+    user.password_hash = hash;
+    user.password_salt = salt;
+    user.last_active = new Date().toISOString();
+    this.scheduleSave();
+
+    return { success: true };
+  }
+
+  // Safe user serialization (NEVER leak password_hash, password_salt or reset_code)
+  public getSafeUser(user: UserRecord) {
+    return {
+      id: user.id,
+      email: user.email,
+      nickname: user.nickname,
+      avatar: user.avatar,
+      has_password: Boolean(user.password_hash),
+      created_at: user.created_at,
+      createdAt: user.created_at
+    };
+  }
+
   // Create session
   public createSession(userId: string): string {
-    const token = `sess_${userId}_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+    const token = `tok_${Date.now()}_${Math.random().toString(36).substring(2, 15)}_${Math.random().toString(36).substring(2, 15)}`;
     this.data.sessions[token] = userId;
     this.scheduleSave();
     return token;
   }
 
-  // Get user from token (resilient, never crashes, auto-recovers session)
+  // Retrieve user by session token
   public getUserByToken(token: string): UserRecord | null {
     if (!token) return null;
-    const cleanToken = token.replace('Bearer ', '').trim();
+    const cleanToken = token.startsWith('Bearer ') ? token.slice(7).trim() : token.trim();
     const userId = this.data.sessions[cleanToken];
-    if (userId && this.data.users[userId]) {
-      const user = this.data.users[userId];
+    if (!userId) {
+      // In dev/demo, check if token itself is an ID
+      if (cleanToken.startsWith('usr_') && this.data.users[cleanToken]) {
+        return this.data.users[cleanToken];
+      }
+      // Demo dev tokens
+      if (cleanToken.startsWith('dev_token_')) {
+        const idPart = cleanToken.replace('dev_token_', '');
+        if (this.data.users[idPart]) return this.data.users[idPart];
+      }
+      return null;
+    }
+    const user = this.data.users[userId];
+    if (user) {
       user.last_active = new Date().toISOString();
-      return user;
     }
-
-    // Fallback: If cleanToken is from client mock or session lost, recover gracefully
-    const usersList = Object.values(this.data.users);
-    const nonSeedUsers = usersList.filter((u) => !u.id.startsWith('usr_seed_'));
-    if (nonSeedUsers.length > 0) {
-      const targetUser = nonSeedUsers[nonSeedUsers.length - 1];
-      this.data.sessions[cleanToken] = targetUser.id;
-      this.scheduleSave();
-      return targetUser;
-    }
-
-    // Auto-create active user session so user is never locked out
-    const defaultUid = `usr_${Date.now()}`;
-    const defaultUser: UserRecord = {
-      id: defaultUid,
-      google_auth_id: `google_${defaultUid}`,
-      email: `${defaultUid}@student.local`,
-      nickname: 'Bạn học sinh',
-      avatar: '🌱',
-      friend_id: this.generateUniqueFriendId('BanHocSinh'),
-      created_at: new Date().toISOString(),
-      last_active: new Date().toISOString(),
-      blocked_user_ids: []
-    };
-    this.data.users[defaultUser.id] = defaultUser;
-    this.data.sessions[cleanToken] = defaultUser.id;
-    this.rebuildIndexes();
-    this.scheduleSave();
-    return defaultUser;
+    return user || null;
   }
 
-  // Destroy session
+  // Invalidate session
   public deleteSession(token: string) {
-    const cleanToken = token.replace('Bearer ', '').trim();
+    const cleanToken = token.startsWith('Bearer ') ? token.slice(7).trim() : token.trim();
     delete this.data.sessions[cleanToken];
     this.scheduleSave();
   }
 
-  // Update user profile
+  // Update profile
   public updateUser(userId: string, updates: { nickname?: string; avatar?: string }): UserRecord | null {
     const user = this.data.users[userId];
     if (!user) return null;
 
-    if (updates.nickname && updates.nickname.trim().length > 0) {
-      user.nickname = updates.nickname.trim().slice(0, 30);
+    if (updates.nickname && updates.nickname.trim()) {
+      user.nickname = updates.nickname.trim();
     }
-    if (updates.avatar !== undefined) {
-      user.avatar = updates.avatar ? updates.avatar.trim() : '';
+    if (updates.avatar && updates.avatar.trim()) {
+      user.avatar = updates.avatar.trim();
     }
     user.last_active = new Date().toISOString();
     this.scheduleSave();
     return user;
   }
 
-  // Fast Math Best Score
+  // User Fast Math Best Score
   public getUserFastMathBest(userId: string): number {
     const user = this.data.users[userId];
     return user?.fast_math_best_score || 0;
@@ -537,17 +548,16 @@ class Database {
   public updateUserFastMathBest(userId: string, score: number): number {
     const user = this.data.users[userId];
     if (!user) return score;
-    const currentBest = user.fast_math_best_score || 0;
-    if (score > currentBest) {
+    const current = user.fast_math_best_score || 0;
+    if (score > current) {
       user.fast_math_best_score = score;
-      user.last_active = new Date().toISOString();
       this.scheduleSave();
       return score;
     }
-    return currentBest;
+    return current;
   }
 
-  // Get or assign daily advice for user (persisted by Account ID & date, without repetition)
+  // Get or assign daily advice for user
   public getOrCreateUserDailyAdvice(
     userId: string,
     dateStr: string
@@ -582,9 +592,8 @@ class Database {
 
     let chosenAdvice: DailyAdvice;
     if (unreadAdvices.length > 0) {
-      // Deterministic hash based on user friend_id / id + dateStr so it's consistent and personalized
       let hash = 0;
-      const seed = `${user.friend_id || user.id}_${dateStr}`;
+      const seed = `${user.id}_${dateStr}`;
       for (let i = 0; i < seed.length; i++) {
         hash = (hash << 5) - hash + seed.charCodeAt(i);
         hash |= 0;
@@ -592,12 +601,10 @@ class Database {
       const index = Math.abs(hash) % unreadAdvices.length;
       chosenAdvice = unreadAdvices[index];
     } else {
-      // If all 90 advices have been seen, select the one seen furthest back in time
       const oldestId = user.advice_history[0]?.advice_id;
       chosenAdvice = DAILY_ADVICES.find((a) => a.id === oldestId) || DAILY_ADVICES[0];
     }
 
-    // 3. Save new entry for today
     user.advice_history.push({
       date: dateStr,
       advice_id: chosenAdvice.id,
@@ -612,7 +619,6 @@ class Database {
     };
   }
 
-  // Mark today's advice as read for user
   public markUserDailyAdviceRead(userId: string, dateStr: string): boolean {
     const user = this.data.users[userId];
     if (!user || !user.advice_history) return false;
@@ -628,536 +634,34 @@ class Database {
     return false;
   }
 
-  // Delete account completely
+  // Delete account completely and purge user data
   public deleteUser(userId: string): boolean {
     if (!this.data.users[userId]) return false;
 
     delete this.data.users[userId];
     delete this.data.journals[userId];
+    delete this.data.plants[userId];
+
+    // Purge user's letters
+    if (this.data.letters) {
+      for (const [id, ltr] of Object.entries(this.data.letters)) {
+        if (ltr.sender_id === userId) {
+          delete this.data.letters[id];
+        }
+      }
+    }
 
     // Remove sessions
     for (const [token, uid] of Object.entries(this.data.sessions)) {
       if (uid === userId) delete this.data.sessions[token];
     }
 
-    // Remove friendships
-    this.data.friendships = this.data.friendships.filter(
-      (f) => f.user_a !== userId && f.user_b !== userId
-    );
-
-    // Remove requests
-    this.data.friend_requests = this.data.friend_requests.filter(
-      (r) => r.sender_id !== userId && r.receiver_id !== userId
-    );
-
     this.scheduleSave();
     return true;
   }
 
-  // Check if two users are friends
-  public areFriends(userA: string, userB: string): boolean {
-    return this.data.friendships.some(
-      (f) =>
-        (f.user_a === userA && f.user_b === userB) ||
-        (f.user_a === userB && f.user_b === userA)
-    );
-  }
-
-  // Check if user A blocked user B
-  public isBlocked(userA: string, userB: string): boolean {
-    const a = this.data.users[userA];
-    const b = this.data.users[userB];
-    if (a?.blocked_user_ids?.includes(userB)) return true;
-    if (b?.blocked_user_ids?.includes(userA)) return true;
-    return false;
-  }
-
-  // Get friends list for a user (returns safe public profile info only)
-  public getFriends(userId: string): Array<{
-    id: string;
-    nickname: string;
-    avatar: string;
-    friend_id: string;
-    is_online: boolean;
-    since: string;
-  }> {
-    const user = this.data.users[userId];
-    if (!user) return [];
-
-    const friendships = this.data.friendships.filter(
-      (f) => f.user_a === userId || f.user_b === userId
-    );
-
-    const result: Array<{
-      id: string;
-      nickname: string;
-      avatar: string;
-      friend_id: string;
-      is_online: boolean;
-      since: string;
-    }> = [];
-
-    const now = Date.now();
-    for (const f of friendships) {
-      const friendId = f.user_a === userId ? f.user_b : f.user_a;
-      const friend = this.data.users[friendId];
-      if (!friend) continue;
-      if (user.blocked_user_ids?.includes(friendId)) continue;
-      if (friend.blocked_user_ids?.includes(userId)) continue;
-
-      // Online if active within last 5 minutes
-      const lastActiveMs = new Date(friend.last_active || 0).getTime();
-      const isOnline = now - lastActiveMs < 5 * 60 * 1000;
-
-      result.push({
-        id: friend.id,
-        nickname: friend.nickname,
-        avatar: friend.avatar,
-        friend_id: friend.friend_id,
-        is_online: isOnline,
-        since: f.created_at
-      });
-    }
-
-    return result;
-  }
-
-  // Add friend directly by Friend ID (Safe, resilient, with mock database auto-recovery)
-  public addFriend(
-    userId: string,
-    targetFriendId: string
-  ): {
-    success: boolean;
-    alreadyFriends?: boolean;
-    message: string;
-    friend?: {
-      id: string;
-      nickname: string;
-      avatar: string;
-      friend_id: string;
-      is_online: boolean;
-      since: string;
-    };
-  } {
-    if (!targetFriendId || typeof targetFriendId !== 'string') {
-      return { success: false, message: 'Friend ID không hợp lệ.' };
-    }
-
-    const cleanTargetId = targetFriendId.trim().toUpperCase();
-    const cleanNoHash = cleanTargetId.replace('#', '');
-
-    if (!cleanNoHash) {
-      return { success: false, message: 'Vui lòng nhập Friend ID hợp lệ.' };
-    }
-
-    // Ensure sender exists
-    let sender = this.data.users[userId];
-    if (!sender) {
-      sender = this.getUserById(userId) || Object.values(this.data.users)[0];
-      if (!sender) {
-        return { success: false, message: 'Không xác định được tài khoản người dùng.' };
-      }
-      userId = sender.id;
-    }
-
-    // Find target user
-    let target = this.getUserByFriendId(cleanTargetId);
-
-    // If target not found in loaded users, check seed users and re-seed if needed
-    if (!target) {
-      for (const s of SEED_USERS) {
-        const sFid = s.friend_id.toUpperCase();
-        if (sFid === cleanTargetId || sFid.replace('#', '') === cleanNoHash) {
-          this.data.users[s.id] = { ...s, last_active: new Date().toISOString() };
-          this.rebuildIndexes();
-          target = this.data.users[s.id];
-          break;
-        }
-      }
-    }
-
-    // If still not found, create a delightful mock companion user so user test succeeds
-    if (!target) {
-      const mockNicknames = ['Tuệ Lâm', 'Gia Huy', 'Khánh Linh', 'Nhật Minh', 'Thảo Nguyên', 'Phương Vy'];
-      const mockAvatars = ['🌿', '🎨', '🌟', '🎧', '🍓', '🐾'];
-      const hashIndex = Math.abs(cleanNoHash.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)) % mockNicknames.length;
-      
-      const mockUid = `usr_mock_${cleanNoHash.toLowerCase()}`;
-      const newMockUser: UserRecord = {
-        id: mockUid,
-        google_auth_id: `google_${mockUid}`,
-        email: `${cleanNoHash.toLowerCase()}@friend.teen`,
-        nickname: mockNicknames[hashIndex],
-        avatar: mockAvatars[hashIndex],
-        friend_id: `#${cleanNoHash}`,
-        created_at: new Date().toISOString(),
-        last_active: new Date().toISOString(),
-        blocked_user_ids: []
-      };
-      this.data.users[newMockUser.id] = newMockUser;
-      this.rebuildIndexes();
-      target = newMockUser;
-    }
-
-    if (target.id === userId) {
-      return { success: false, message: 'Bạn không thể tự kết bạn với chính mình.' };
-    }
-
-    if (this.isBlocked(userId, target.id)) {
-      return { success: false, message: 'Không thể kết bạn với người dùng này do trạng thái chặn.' };
-    }
-
-    if (this.areFriends(userId, target.id)) {
-      return {
-        success: true,
-        alreadyFriends: true,
-        message: `Bạn và ${target.nickname} (${target.friend_id}) đã là bạn bè từ trước rồi!`,
-        friend: {
-          id: target.id,
-          nickname: target.nickname,
-          avatar: target.avatar,
-          friend_id: target.friend_id,
-          is_online: true,
-          since: new Date().toISOString()
-        }
-      };
-    }
-
-    // Create friendship
-    const nowIso = new Date().toISOString();
-    const friendship: FriendshipRecord = {
-      id: `fsh_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-      user_a: userId,
-      user_b: target.id,
-      created_at: nowIso
-    };
-    this.data.friendships.push(friendship);
-
-    // Resolve any pending requests
-    for (const req of this.data.friend_requests) {
-      if (
-        (req.sender_id === userId && req.receiver_id === target.id) ||
-        (req.sender_id === target.id && req.receiver_id === userId)
-      ) {
-        req.status = 'accepted';
-      }
-    }
-
-    this.scheduleSave();
-
-    return {
-      success: true,
-      message: `Đã kết bạn thành công với ${target.nickname} (${target.friend_id})!`,
-      friend: {
-        id: target.id,
-        nickname: target.nickname,
-        avatar: target.avatar,
-        friend_id: target.friend_id,
-        is_online: true,
-        since: nowIso
-      }
-    };
-  }
-
-  // Send friend request
-  public sendFriendRequest(senderId: string, receiverFriendId: string): {
-    success: boolean;
-    message: string;
-    request?: FriendRequestRecord;
-    receiver?: { nickname: string; friend_id: string; avatar: string };
-  } {
-    const sender = this.data.users[senderId];
-    if (!sender) return { success: false, message: 'Người dùng không tồn tại.' };
-
-    const receiver = this.getUserByFriendId(receiverFriendId);
-    if (!receiver) {
-      return { success: false, message: 'Không tìm thấy người dùng với Friend ID này. Bạn kiểm tra lại mã nhé!' };
-    }
-
-    if (receiver.id === senderId) {
-      return { success: false, message: 'Bạn không thể tự gửi lời mời kết bạn cho chính mình.' };
-    }
-
-    if (this.isBlocked(senderId, receiver.id)) {
-      return { success: false, message: 'Không thể gửi lời mời kết bạn tới người dùng này.' };
-    }
-
-    if (this.areFriends(senderId, receiver.id)) {
-      return { success: false, message: 'Hai bạn đã là bạn bè rồi!' };
-    }
-
-    // Check if already sent pending request from sender to receiver
-    const existingOutgoing = this.data.friend_requests.find(
-      (r) => r.sender_id === senderId && r.receiver_id === receiver.id && r.status === 'pending'
-    );
-    if (existingOutgoing) {
-      return { success: false, message: 'Bạn đã gửi lời mời trước đó rồi, hãy chờ bạn ấy phản hồi nhé!' };
-    }
-
-    // Check if receiver already sent a pending request to sender -> auto accept!
-    const existingIncoming = this.data.friend_requests.find(
-      (r) => r.sender_id === receiver.id && r.receiver_id === senderId && r.status === 'pending'
-    );
-    if (existingIncoming) {
-      existingIncoming.status = 'accepted';
-      this.data.friendships.push({
-        id: `fsh_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-        user_a: senderId,
-        user_b: receiver.id,
-        created_at: new Date().toISOString()
-      });
-      this.scheduleSave();
-      return {
-        success: true,
-        message: `Bạn và ${receiver.nickname} đã trở thành bạn bè!`,
-        receiver: {
-          nickname: receiver.nickname,
-          friend_id: receiver.friend_id,
-          avatar: receiver.avatar
-        }
-      };
-    }
-
-    const newReq: FriendRequestRecord = {
-      id: `req_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-      sender_id: senderId,
-      receiver_id: receiver.id,
-      status: 'pending',
-      created_at: new Date().toISOString()
-    };
-
-    this.data.friend_requests.push(newReq);
-    this.scheduleSave();
-
-    return {
-      success: true,
-      message: `Đã gửi lời mời kết bạn tới ${receiver.nickname}!`,
-      request: newReq,
-      receiver: {
-        nickname: receiver.nickname,
-        friend_id: receiver.friend_id,
-        avatar: receiver.avatar
-      }
-    };
-  }
-
-  // Get incoming & outgoing friend requests
-  public getFriendRequests(userId: string): {
-    incoming: Array<{
-      id: string;
-      sender_id: string;
-      nickname: string;
-      avatar: string;
-      friend_id: string;
-      created_at: string;
-    }>;
-    outgoing: Array<{
-      id: string;
-      receiver_id: string;
-      nickname: string;
-      avatar: string;
-      friend_id: string;
-      created_at: string;
-    }>;
-  } {
-    const user = this.data.users[userId];
-    if (!user) return { incoming: [], outgoing: [] };
-
-    const incoming: Array<{
-      id: string;
-      sender_id: string;
-      nickname: string;
-      avatar: string;
-      friend_id: string;
-      created_at: string;
-    }> = [];
-
-    const outgoing: Array<{
-      id: string;
-      receiver_id: string;
-      nickname: string;
-      avatar: string;
-      friend_id: string;
-      created_at: string;
-    }> = [];
-
-    for (const r of this.data.friend_requests) {
-      if (r.status !== 'pending') continue;
-
-      if (r.receiver_id === userId) {
-        const sender = this.data.users[r.sender_id];
-        if (sender && !this.isBlocked(userId, sender.id)) {
-          incoming.push({
-            id: r.id,
-            sender_id: sender.id,
-            nickname: sender.nickname,
-            avatar: sender.avatar,
-            friend_id: sender.friend_id,
-            created_at: r.created_at
-          });
-        }
-      } else if (r.sender_id === userId) {
-        const receiver = this.data.users[r.receiver_id];
-        if (receiver && !this.isBlocked(userId, receiver.id)) {
-          outgoing.push({
-            id: r.id,
-            receiver_id: receiver.id,
-            nickname: receiver.nickname,
-            avatar: receiver.avatar,
-            friend_id: receiver.friend_id,
-            created_at: r.created_at
-          });
-        }
-      }
-    }
-
-    return { incoming, outgoing };
-  }
-
-  // Respond to friend request (accept or reject)
-  public respondFriendRequest(
-    userId: string,
-    requestId: string,
-    action: 'accept' | 'reject'
-  ): { success: boolean; message: string } {
-    const req = this.data.friend_requests.find((r) => r.id === requestId);
-    if (!req) {
-      return { success: false, message: 'Lời mời kết bạn không tồn tại.' };
-    }
-
-    if (req.receiver_id !== userId) {
-      return { success: false, message: 'Bạn không có quyền phản hồi lời mời này.' };
-    }
-
-    if (req.status !== 'pending') {
-      return { success: false, message: 'Lời mời này đã được xử lý rồi.' };
-    }
-
-    const sender = this.data.users[req.sender_id];
-    if (!sender) {
-      this.data.friend_requests = this.data.friend_requests.filter((r) => r.id !== requestId);
-      this.scheduleSave();
-      return { success: false, message: 'Tài khoản người gửi không còn tồn tại.' };
-    }
-
-    if (action === 'accept') {
-      req.status = 'accepted';
-      if (!this.areFriends(userId, req.sender_id)) {
-        this.data.friendships.push({
-          id: `fsh_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-          user_a: userId,
-          user_b: req.sender_id,
-          created_at: new Date().toISOString()
-        });
-      }
-      this.scheduleSave();
-      return { success: true, message: `Đã trở thành bạn bè với ${sender.nickname}!` };
-    } else {
-      req.status = 'rejected';
-      // Remove from list
-      this.data.friend_requests = this.data.friend_requests.filter((r) => r.id !== requestId);
-      this.scheduleSave();
-      return { success: true, message: 'Đã từ chối lời mời kết bạn.' };
-    }
-  }
-
-  // Cancel outgoing friend request
-  public cancelFriendRequest(userId: string, requestId: string): { success: boolean; message: string } {
-    const reqIndex = this.data.friend_requests.findIndex(
-      (r) => r.id === requestId && r.sender_id === userId && r.status === 'pending'
-    );
-    if (reqIndex === -1) {
-      return { success: false, message: 'Không tìm thấy lời mời để hủy.' };
-    }
-
-    this.data.friend_requests.splice(reqIndex, 1);
-    this.scheduleSave();
-    return { success: true, message: 'Đã hủy lời mời kết bạn.' };
-  }
-
-  // Remove friend (unfriend)
-  public removeFriend(userId: string, friendUserId: string): { success: boolean; message: string } {
-    const initialLen = this.data.friendships.length;
-    this.data.friendships = this.data.friendships.filter(
-      (f) =>
-        !(
-          (f.user_a === userId && f.user_b === friendUserId) ||
-          (f.user_a === friendUserId && f.user_b === userId)
-        )
-    );
-
-    if (this.data.friendships.length < initialLen) {
-      this.scheduleSave();
-      return { success: true, message: 'Đã xóa người này khỏi danh sách bạn bè.' };
-    }
-    return { success: false, message: 'Hai người không phải là bạn bè.' };
-  }
-
-  // Block a user
-  public blockUser(userId: string, targetUserId: string): { success: boolean; message: string } {
-    const user = this.data.users[userId];
-    if (!user) return { success: false, message: 'Người dùng không tồn tại.' };
-    if (userId === targetUserId) return { success: false, message: 'Không thể tự chặn chính mình.' };
-
-    if (!user.blocked_user_ids) {
-      user.blocked_user_ids = [];
-    }
-    if (!user.blocked_user_ids.includes(targetUserId)) {
-      user.blocked_user_ids.push(targetUserId);
-    }
-
-    // Remove friendship
-    this.data.friendships = this.data.friendships.filter(
-      (f) =>
-        !(
-          (f.user_a === userId && f.user_b === targetUserId) ||
-          (f.user_a === targetUserId && f.user_b === userId)
-        )
-    );
-
-    // Cancel pending requests between them
-    this.data.friend_requests = this.data.friend_requests.filter(
-      (r) =>
-        !(
-          (r.sender_id === userId && r.receiver_id === targetUserId) ||
-          (r.sender_id === targetUserId && r.receiver_id === userId)
-        )
-    );
-
-    this.scheduleSave();
-    return { success: true, message: 'Đã chặn người dùng thành công.' };
-  }
-
-  // Unblock a user
-  public unblockUser(userId: string, targetUserId: string): { success: boolean; message: string } {
-    const user = this.data.users[userId];
-    if (!user || !user.blocked_user_ids) return { success: false, message: 'Chưa chặn người này.' };
-
-    user.blocked_user_ids = user.blocked_user_ids.filter((id) => id !== targetUserId);
-    this.scheduleSave();
-    return { success: true, message: 'Đã bỏ chặn người dùng.' };
-  }
-
-  // Get blocked users list
-  public getBlockedUsers(userId: string): Array<{ id: string; nickname: string; friend_id: string; avatar: string }> {
-    const user = this.data.users[userId];
-    if (!user || !user.blocked_user_ids) return [];
-
-    return user.blocked_user_ids
-      .map((id) => this.data.users[id])
-      .filter((u): u is UserRecord => !!u)
-      .map((u) => ({
-        id: u.id,
-        nickname: u.nickname,
-        friend_id: u.friend_id,
-        avatar: u.avatar
-      }));
-  }
-
-  // --- STRICTLY PRIVATE JOURNAL STORAGE LINKED TO USER_ID ---
+  // Save User Journal (STRICTLY ISOLATED BY UID)
   public saveUserJournal(userId: string, entries: any[], capsules: any[]): boolean {
-    if (!this.data.users[userId]) return false;
-
     this.data.journals[userId] = {
       user_id: userId,
       entries: Array.isArray(entries) ? entries : [],
@@ -1168,295 +672,54 @@ class Database {
     return true;
   }
 
+  // Get User Journal (STRICTLY ISOLATED BY UID)
   public getUserJournal(userId: string): { entries: any[]; capsules: any[] } {
     const j = this.data.journals[userId];
+    if (!j) {
+      return { entries: [], capsules: [] };
+    }
     return {
-      entries: j?.entries || [],
-      capsules: j?.capsules || []
+      entries: Array.isArray(j.entries) ? j.entries : [],
+      capsules: Array.isArray(j.capsules) ? j.capsules : []
     };
   }
 
-  // --- EMOTION PLANT STORAGE & SOCIAL CARE ---
-  public saveUserPlant(userId: string, seeds: any[]): boolean {
-    if (!this.data.users[userId]) return false;
-
-    const existing = this.data.plants[userId];
-    this.data.plants[userId] = {
-      user_id: userId,
-      seeds: Array.isArray(seeds) ? seeds : [],
-      permissions: existing?.permissions || {
-        allow_friends_to_care: true,
-        allow_encouragement_messages: true,
+  // Save User Plant Seeds & State (STRICTLY PERSONAL - NO FRIEND CARE)
+  public saveUserPlant(userId: string, data: any): boolean {
+    const existing = this.data.plants[userId] || {};
+    if (Array.isArray(data)) {
+      this.data.plants[userId] = {
+        ...existing,
+        user_id: userId,
+        seeds: data,
         updated_at: new Date().toISOString()
-      },
-      messages: existing?.messages || [],
-      updated_at: new Date().toISOString()
-    };
+      };
+    } else if (data && typeof data === 'object') {
+      this.data.plants[userId] = {
+        ...existing,
+        ...data,
+        user_id: userId,
+        seeds: Array.isArray(data.seeds) ? data.seeds : (existing.seeds || []),
+        updated_at: new Date().toISOString()
+      };
+    }
     this.scheduleSave();
     return true;
   }
 
-  public getUserPlant(userId: string): { seeds: any[]; permissions?: PlantPermissionsRecord; messages: PlantCareMessageRecord[] } {
+  // Get User Plant (STRICTLY PERSONAL)
+  public getUserPlant(userId: string): any {
     const p = this.data.plants[userId];
+    if (!p) {
+      return { seeds: [] };
+    }
     return {
-      seeds: p?.seeds || [],
-      permissions: p?.permissions || {
-        allow_friends_to_care: true,
-        allow_encouragement_messages: true,
-        updated_at: new Date().toISOString()
-      },
-      messages: p?.messages || []
+      ...p,
+      seeds: Array.isArray(p.seeds) ? p.seeds : []
     };
   }
 
-  // Get Friend Plant View (STRICT PRIVACY: Returns plant growth & messages, NEVER friend's private seed drawings or notes!)
-  public getFriendPlant(currentUserId: string, friendUserId: string): {
-    success: boolean;
-    error?: string;
-    isAllowed?: boolean;
-    reason?: string;
-    plant?: {
-      owner_nickname: string;
-      owner_avatar: string;
-      owner_friend_id: string;
-      stage: number;
-      seed_count: number;
-      messages: PlantCareMessageRecord[];
-      permissions: PlantPermissionsRecord;
-    };
-  } {
-    if (currentUserId === friendUserId) {
-      return { success: false, error: 'Bạn đang xem cây của chính mình.' };
-    }
-
-    const friend = this.data.users[friendUserId];
-    if (!friend) {
-      return { success: false, error: 'Không tìm thấy tài khoản người bạn này.' };
-    }
-
-    // Check friendship
-    if (!this.areFriends(currentUserId, friendUserId)) {
-      return { success: false, error: 'Bạn và người này chưa kết bạn với nhau.' };
-    }
-
-    // Check block status
-    if (this.isBlocked(currentUserId, friendUserId)) {
-      return { success: false, error: 'Không thể xem cây do đã chặn hoặc bị chặn.' };
-    }
-
-    const plant = this.data.plants[friendUserId] || {
-      user_id: friendUserId,
-      seeds: [],
-      permissions: { allow_friends_to_care: true, allow_encouragement_messages: true, updated_at: new Date().toISOString() },
-      messages: [],
-      updated_at: new Date().toISOString()
-    };
-
-    const permissions = plant.permissions || {
-      allow_friends_to_care: true,
-      allow_encouragement_messages: true,
-      updated_at: new Date().toISOString()
-    };
-
-    if (!permissions.allow_friends_to_care) {
-      return {
-        success: true,
-        isAllowed: false,
-        reason: `${friend.nickname} đang tạm đóng không gian trông cây giúp bạn bè.`,
-        plant: {
-          owner_nickname: friend.nickname,
-          owner_avatar: friend.avatar,
-          owner_friend_id: friend.friend_id,
-          stage: 1,
-          seed_count: 0,
-          messages: [],
-          permissions
-        }
-      };
-    }
-
-    // Compute stage based on seed count
-    const count = (plant.seeds || []).length;
-    let stage = 1;
-    if (count >= 20) stage = 5;
-    else if (count >= 12) stage = 4;
-    else if (count >= 6) stage = 3;
-    else if (count >= 2) stage = 2;
-
-    return {
-      success: true,
-      isAllowed: true,
-      plant: {
-        owner_nickname: friend.nickname,
-        owner_avatar: friend.avatar,
-        owner_friend_id: friend.friend_id,
-        stage,
-        seed_count: count,
-        messages: plant.messages || [],
-        permissions
-      }
-    };
-  }
-
-  // Send encouragement message to friend's plant
-  public sendPlantEncouragement(
-    senderUserId: string,
-    friendUserId: string,
-    messageText: string,
-    visualEffect: 'flower' | 'leaf' | 'sun' | 'dew' | 'fruit' = 'flower'
-  ): { success: boolean; error?: string; message?: PlantCareMessageRecord } {
-    if (senderUserId === friendUserId) {
-      return { success: false, error: 'Bạn không thể tự gửi lời động viên cho cây của chính mình.' };
-    }
-
-    const sender = this.data.users[senderUserId];
-    const friend = this.data.users[friendUserId];
-    if (!sender || !friend) {
-      return { success: false, error: 'Người dùng không tồn tại.' };
-    }
-
-    // Verify mutual friendship and not blocked
-    if (!this.areFriends(senderUserId, friendUserId)) {
-      return { success: false, error: 'Bạn cần kết bạn trước khi trông cây giúp người ấy.' };
-    }
-
-    if (this.isBlocked(senderUserId, friendUserId)) {
-      return { success: false, error: 'Không thể gửi lời nhắn do có chặn giữa hai tài khoản.' };
-    }
-
-    // Ensure friend's plant record exists
-    if (!this.data.plants[friendUserId]) {
-      this.data.plants[friendUserId] = {
-        user_id: friendUserId,
-        seeds: [],
-        permissions: { allow_friends_to_care: true, allow_encouragement_messages: true, updated_at: new Date().toISOString() },
-        messages: [],
-        updated_at: new Date().toISOString()
-      };
-    }
-
-    const plant = this.data.plants[friendUserId];
-    const perms = plant.permissions || { allow_friends_to_care: true, allow_encouragement_messages: true, updated_at: new Date().toISOString() };
-
-    if (!perms.allow_friends_to_care || !perms.allow_encouragement_messages) {
-      return { success: false, error: 'Bạn của bạn hiện không nhận lời động viên mới lúc này.' };
-    }
-
-    const cleanMsg = (messageText || '').trim();
-    if (!cleanMsg) {
-      return { success: false, error: 'Vui lòng gõ một lời động viên gửi tặng bạn nhé.' };
-    }
-
-    if (cleanMsg.length > 200) {
-      return { success: false, error: 'Lời nhắn tối đa 200 ký tự để giữ sự nhẹ nhàng, súc tích.' };
-    }
-
-    // Rate-limiting / Anti-spam: Max 5 messages in last 10 minutes from this sender to this friend
-    const now = Date.now();
-    const tenMinutesAgo = now - 10 * 60 * 1000;
-    const recentCount = (plant.messages || []).filter(
-      (m) => m.sender_user_id === senderUserId && new Date(m.created_at).getTime() > tenMinutesAgo
-    ).length;
-
-    if (recentCount >= 5) {
-      return { success: false, error: 'Bạn đã gửi nhiều lời động viên gần đây. Hãy để bạn ấy cảm nhận nhé!' };
-    }
-
-    const validEffects: Array<'flower' | 'leaf' | 'sun' | 'dew' | 'fruit'> = ['flower', 'leaf', 'sun', 'dew', 'fruit'];
-    const effect = validEffects.includes(visualEffect) ? visualEffect : 'flower';
-
-    const newMessage: PlantCareMessageRecord = {
-      id: `care_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`,
-      plant_owner_user_id: friendUserId,
-      sender_user_id: sender.id,
-      sender_nickname: sender.nickname,
-      sender_avatar: sender.avatar,
-      sender_friend_id: sender.friend_id,
-      message: cleanMsg,
-      visual_effect: effect,
-      created_at: new Date().toISOString(),
-      read_at: null
-    };
-
-    if (!plant.messages) {
-      plant.messages = [];
-    }
-    plant.messages.unshift(newMessage);
-    plant.updated_at = new Date().toISOString();
-
-    this.scheduleSave();
-    return { success: true, message: newMessage };
-  }
-
-  // Mark encouragement message read by owner
-  public markPlantMessageRead(userId: string, messageId: string): boolean {
-    const plant = this.data.plants[userId];
-    if (!plant || !plant.messages) return false;
-
-    const msg = plant.messages.find((m) => m.id === messageId);
-    if (msg && !msg.read_at) {
-      msg.read_at = new Date().toISOString();
-      this.scheduleSave();
-      return true;
-    }
-    return false;
-  }
-
-  // Update Plant Privacy Permissions
-  public updatePlantPermissions(
-    userId: string,
-    updates: { allow_friends_to_care?: boolean; allow_encouragement_messages?: boolean }
-  ): PlantPermissionsRecord | null {
-    if (!this.data.plants[userId]) {
-      this.data.plants[userId] = {
-        user_id: userId,
-        seeds: [],
-        permissions: { allow_friends_to_care: true, allow_encouragement_messages: true, updated_at: new Date().toISOString() },
-        messages: [],
-        updated_at: new Date().toISOString()
-      };
-    }
-
-    const plant = this.data.plants[userId];
-    const current = plant.permissions || {
-      allow_friends_to_care: true,
-      allow_encouragement_messages: true,
-      updated_at: new Date().toISOString()
-    };
-
-    if (typeof updates.allow_friends_to_care === 'boolean') {
-      current.allow_friends_to_care = updates.allow_friends_to_care;
-    }
-    if (typeof updates.allow_encouragement_messages === 'boolean') {
-      current.allow_encouragement_messages = updates.allow_encouragement_messages;
-    }
-    current.updated_at = new Date().toISOString();
-    plant.permissions = current;
-    this.scheduleSave();
-    return current;
-  }
-
-  // ================= BỨC THƯ CHO BẢN THÂN ("LETTERS TO MY FUTURE SELF") =================
-
-  private ensureSeedLetters() {
-    if (!this.data.letters) {
-      this.data.letters = {};
-    }
-    // Clean out all seed sample letters as requested for clean slate
-    const keys = Object.keys(this.data.letters);
-    let changed = false;
-    for (const k of keys) {
-      if (k.startsWith('self_ltr_seed_') || k.startsWith('ltr_seed_')) {
-        delete this.data.letters[k];
-        changed = true;
-      }
-    }
-    if (changed) {
-      this.scheduleSave();
-    }
-  }
-
-  // Create a new letter to self
+  // Letters to Self
   public createLetter(data: {
     sender_id?: string;
     sender_name?: string;
@@ -1470,7 +733,6 @@ class Database {
     open_date: string;
     wax_seal?: string;
     stickers_data?: string;
-    // Compatibility fields
     seal_icon?: string;
     theme_color?: string;
     condition_type?: LetterConditionType;
@@ -1496,7 +758,6 @@ class Database {
       opened_at: null,
       created_at: new Date().toISOString(),
       stickers_data: data.stickers_data || undefined,
-      // Legacy compatibility
       seal_icon: data.seal_icon || '✉️',
       theme_color: data.theme_color || 'amber',
       condition_type: 'date',
@@ -1512,18 +773,15 @@ class Database {
     return letter;
   }
 
-  // Helper to parse openDate timestamp
   private getLetterOpenTimestamp(openDateStr: string): number {
     if (!openDateStr) return 0;
     if (/^\d{4}-\d{2}-\d{2}$/.test(openDateStr)) {
       const parts = openDateStr.split('-');
-      // Start of day in local time
       return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 0, 0, 0).getTime();
     }
     return new Date(openDateStr).getTime();
   }
 
-  // Format date helper in Vietnamese DD/MM/YYYY
   private formatVnDate(timestamp: number): string {
     const d = new Date(timestamp);
     const day = String(d.getDate()).padStart(2, '0');
@@ -1532,12 +790,14 @@ class Database {
     return `${day}/${month}/${year}`;
   }
 
-  // Get list of letter summaries without leaking content or drawings if locked
   public getLetterSummaries(userId?: string): SelfLetterSummary[] {
     if (!this.data.letters) return [];
     const now = Date.now();
 
-    return Object.values(this.data.letters)
+    const letters = Object.values(this.data.letters)
+      .filter((ltr) => userId ? ltr.sender_id === userId : !ltr.sender_id);
+
+    return letters
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       .map(ltr => {
         const openDateStr = ltr.open_date || ltr.unlock_at || ltr.created_at;
@@ -1570,27 +830,21 @@ class Database {
           is_locked,
           lock_message,
           days_remaining,
-          has_drawing: !!ltr.drawing_data,
-          // Legacy compatibility
           seal_icon: ltr.seal_icon || '✉️',
           theme_color: ltr.theme_color || 'amber',
           condition_type: 'date',
-          unlock_at: openDateStr,
-          share_key: ltr.share_key
+          unlock_at: openDateStr
         };
       });
   }
 
-  // Get raw letter record by id
   public getLetterById(id: string): SelfLetterRecord | null {
     if (!this.data.letters) return null;
     return this.data.letters[id] || null;
   }
 
-  // Open / unlock letter with date condition verification
   public openLetter(
-    id: string,
-    options?: { code?: string; mood_confirm?: string; share_key?: string }
+    id: string
   ): { success: boolean; letter?: SelfLetterRecord; locked?: boolean; lock_message?: string; days_remaining?: number; open_date?: string } {
     const ltr = this.getLetterById(id);
     if (!ltr) {
@@ -1602,7 +856,6 @@ class Database {
     const openTime = this.getLetterOpenTimestamp(openDateStr);
     const formattedDate = this.formatVnDate(openTime);
 
-    // Check date lock condition
     if (now < openTime) {
       const days_remaining = Math.max(1, Math.ceil((openTime - now) / (1000 * 60 * 60 * 24)));
       const lock_message = `Bức thư này được hẹn ngày ${formattedDate} mới mở. Hãy kiên nhẫn chờ đợi nhé...`;
@@ -1615,7 +868,6 @@ class Database {
       };
     }
 
-    // Condition satisfied or already opened
     if (!ltr.is_opened) {
       ltr.is_opened = true;
       ltr.opened_at = new Date().toISOString();
@@ -1628,7 +880,6 @@ class Database {
     };
   }
 
-  // Delete letter (if owned by user or general)
   public deleteLetter(id: string, userId?: string): boolean {
     if (!this.data.letters || !this.data.letters[id]) return false;
     if (userId && this.data.letters[id].sender_id && this.data.letters[id].sender_id !== userId) {

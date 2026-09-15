@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Lock, Calendar, Clock, Trash2, Eye, Sparkles, Inbox } from 'lucide-react';
-import { EmotionSeedItem } from '../../types';
+import { X, Lock, Calendar, Clock, Trash2, Eye, Sparkles, Inbox, CheckCircle2 } from 'lucide-react';
+import { EmotionSeedItem, DailyPlantLog } from '../../types';
+import { WEATHER_CONFIG, PLANT_EMOTIONS } from './plantUtils';
 
 interface EmotionHistoryModalProps {
   isOpen: boolean;
   onClose: () => void;
   seeds: EmotionSeedItem[];
+  dailyLogs?: Record<string, DailyPlantLog>;
   onDeleteSeed?: (seedId: string) => void;
 }
 
@@ -24,6 +26,7 @@ export const EmotionHistoryModal: React.FC<EmotionHistoryModalProps> = ({
   isOpen,
   onClose,
   seeds,
+  dailyLogs = {},
   onDeleteSeed
 }) => {
   const [selectedSeed, setSelectedSeed] = useState<EmotionSeedItem | null>(null);
@@ -114,16 +117,49 @@ export const EmotionHistoryModal: React.FC<EmotionHistoryModalProps> = ({
               </p>
             </div>
           ) : (
-            dates.map((dateStr) => (
-              <div key={dateStr} className="space-y-3">
-                {/* Date header */}
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-3.5 h-3.5 text-amber-700" />
-                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                    {dateStr}
-                  </span>
-                  <div className="h-px bg-amber-100 flex-1" />
-                </div>
+            dates.map((dateStr) => {
+              // Find matching dailyLog if any
+              const firstSeedInDate = groupedSeeds[dateStr]?.[0];
+              const isoDate = firstSeedInDate ? firstSeedInDate.createdAt.split('T')[0] : '';
+              const log = dailyLogs[isoDate];
+              const weatherInfo = log?.weather ? WEATHER_CONFIG[log.weather] : null;
+              const emotionInfo = log?.emotion ? PLANT_EMOTIONS.find(e => e.id === log.emotion) : null;
+
+              return (
+                <div key={dateStr} className="space-y-3">
+                  {/* Date header with day's weather & fertilizer info */}
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-3.5 h-3.5 text-amber-700" />
+                      <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                        {dateStr}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 text-[11px]">
+                      {weatherInfo && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200/60 font-semibold">
+                          <span>{weatherInfo.emoji}</span>
+                          <span>{weatherInfo.name}</span>
+                        </span>
+                      )}
+
+                      {emotionInfo && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200/60 font-semibold">
+                          <span>{emotionInfo.emoji}</span>
+                          <span>{emotionInfo.label}</span>
+                        </span>
+                      )}
+
+                      {log?.fertilizerDone && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-teal-50 text-teal-800 border border-teal-200/60 font-semibold">
+                          <CheckCircle2 className="w-3 h-3 text-teal-600" />
+                          <span>Đã bón đủ {log.fertilizerKg}kg</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="h-px bg-amber-100/80 w-full" />
 
                 {/* Seed cards in circular grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
@@ -162,9 +198,10 @@ export const EmotionHistoryModal: React.FC<EmotionHistoryModalProps> = ({
                   })}
                 </div>
               </div>
-            ))
-          )}
-        </div>
+            );
+          })
+        )}
+      </div>
 
         {/* Zoom Inspection Modal */}
         <AnimatePresence>

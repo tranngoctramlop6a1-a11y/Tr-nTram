@@ -86,13 +86,15 @@ export const JournalView: React.FC<JournalViewProps> = ({
     return [];
   });
 
-  // Switch journal entries whenever user identity changes (Login / Logout)
+  // Switch journal entries & PIN whenever user identity changes (Login / Logout / Account Switch)
   useEffect(() => {
     const keyEntries = user ? `teen_journal_${user.id}_entries` : 'teen_journal_entries';
     const keyCapsules = user ? `teen_journal_${user.id}_capsules` : 'teen_journal_capsules';
+    const keyPin = user ? `teen_journal_${user.id}_pin` : 'teen_journal_pin';
 
     let loadedEntries: JournalEntry[] = [];
     let loadedCapsules: TimeCapsule[] = [];
+    const loadedPin = localStorage.getItem(keyPin) || null;
 
     try {
       const storedE = localStorage.getItem(keyEntries);
@@ -103,24 +105,32 @@ export const JournalView: React.FC<JournalViewProps> = ({
 
     setEntries(loadedEntries);
     setCapsules(loadedCapsules);
+    setPin(loadedPin);
+    setIsUnlocked(!loadedPin);
 
     // If user is authenticated, fetch latest from server
     if (token && user) {
+      let isCurrent = true;
       fetch('/api/journal/my', {
         headers: { Authorization: `Bearer ${token}` }
       })
         .then((res) => res.json())
         .then((data) => {
-          if (data.entries && Array.isArray(data.entries) && data.entries.length > 0) {
+          if (!isCurrent) return;
+          if (Array.isArray(data.entries)) {
             setEntries(data.entries);
             localStorage.setItem(keyEntries, JSON.stringify(data.entries));
           }
-          if (data.capsules && Array.isArray(data.capsules) && data.capsules.length > 0) {
+          if (Array.isArray(data.capsules)) {
             setCapsules(data.capsules);
             localStorage.setItem(keyCapsules, JSON.stringify(data.capsules));
           }
         })
         .catch(() => {});
+
+      return () => {
+        isCurrent = false;
+      };
     }
   }, [user?.id, token]);
 

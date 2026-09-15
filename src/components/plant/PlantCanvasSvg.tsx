@@ -1,102 +1,167 @@
 import React from 'react';
-import { motion } from 'motion/react';
-import { SeedGrowthEffect, PlantCareMessage } from '../../types';
+import { motion, AnimatePresence } from 'motion/react';
+import { SeedGrowthEffect, PlantWeatherType, GardenDecorationItem } from '../../types';
 
 interface PlantCanvasSvgProps {
   seedCount: number;
-  stage: number; // 1 to 5
+  stage: number; // 1 to 6
+  weather?: PlantWeatherType;
+  decorations?: GardenDecorationItem[];
+  hasPendingGift?: boolean;
   isSowingAnim?: boolean;
   recentlyAddedEffect?: SeedGrowthEffect | null;
-  encouragementMessages?: PlantCareMessage[];
   onPlantClick?: () => void;
+  onOpenGift?: () => void;
 }
 
 export const PlantCanvasSvg: React.FC<PlantCanvasSvgProps> = ({
   seedCount,
   stage,
+  weather = 'sunny',
+  decorations = [],
+  hasPendingGift = false,
   isSowingAnim,
   recentlyAddedEffect,
-  encouragementMessages = [],
-  onPlantClick
+  onPlantClick,
+  onOpenGift
 }) => {
-  // Deterministic micro-elements based on seed count
-  // Each seed adds a leaf, bud, blossom, fruit, or firefly
-  const leavesCount = Math.min(seedCount, 16);
-  const flowersCount = seedCount >= 7 ? Math.min(seedCount - 6, 8) : 0;
-  const fruitsCount = seedCount >= 13 ? Math.min(seedCount - 12, 6) : 0;
-  const firefliesCount = seedCount >= 21 ? Math.min(seedCount - 20, 10) : 0;
-  const [hoveredMessage, setHoveredMessage] = React.useState<PlantCareMessage | null>(null);
-
-  const hasSunMessage = encouragementMessages.some((m) => m.visualEffect === 'sun');
-
-  const ENCOURAGEMENT_SLOTS = [
-    { x: 145, y: 135 },
-    { x: 255, y: 140 },
-    { x: 195, y: 105 },
-    { x: 120, y: 185 },
-    { x: 280, y: 180 },
-    { x: 165, y: 165 },
-    { x: 235, y: 160 },
-    { x: 200, y: 65 },
-    { x: 105, y: 145 },
-    { x: 295, y: 140 },
-    { x: 150, y: 220 },
-    { x: 250, y: 215 },
-  ];
+  const decTypes = new Set(decorations.map((d) => d.type));
 
   return (
     <div 
-      className="relative w-full max-w-[340px] sm:max-w-[400px] h-[360px] sm:h-[420px] mx-auto flex items-end justify-center cursor-pointer select-none group"
-      onClick={onPlantClick}
-      title="Nhấn nhẹ để chào cái cây của bạn"
+      className="relative w-full max-w-[360px] sm:max-w-[420px] h-[360px] sm:h-[430px] mx-auto flex items-end justify-center select-none group"
     >
-      {/* Tooltip on hovering encouragement item */}
-      {hoveredMessage && (
+      {/* ════════════════ WEATHER AMBIENCE LAYER ════════════════ */}
+      {/* Sun glow */}
+      {(weather === 'sunny' || weather === 'gentle_sun') && (
+        <div className="absolute top-4 right-6 w-32 h-32 bg-amber-200/50 rounded-full blur-2xl pointer-events-none animate-pulse" />
+      )}
+
+      {/* Rain droplets */}
+      {weather === 'rainy' && (
+        <div className="absolute inset-0 overflow-hidden pointer-events-none z-10">
+          {[
+            { left: '15%', delay: 0.1, duration: 1.2 },
+            { left: '28%', delay: 0.4, duration: 1.0 },
+            { left: '42%', delay: 0.2, duration: 1.3 },
+            { left: '60%', delay: 0.5, duration: 1.1 },
+            { left: '75%', delay: 0.15, duration: 1.2 },
+            { left: '88%', delay: 0.35, duration: 1.4 },
+            { left: '35%', delay: 0.6, duration: 1.15 },
+            { left: '68%', delay: 0.7, duration: 1.25 }
+          ].map((drop, idx) => (
+            <motion.div
+              key={`rain-${idx}`}
+              initial={{ y: -20, opacity: 0.8 }}
+              animate={{ y: 400, opacity: 0 }}
+              transition={{
+                duration: drop.duration,
+                repeat: Infinity,
+                delay: drop.delay,
+                ease: 'linear'
+              }}
+              style={{ left: drop.left }}
+              className="absolute top-0 w-0.5 h-4 bg-gradient-to-b from-sky-400 to-transparent rounded-full"
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Rainbow Arc */}
+      {(weather === 'rainbow' || decTypes.has('rainbow')) && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 w-64 h-32 pointer-events-none opacity-60">
+          <svg viewBox="0 0 200 100" className="w-full h-full overflow-visible">
+            <path d="M 10 100 A 90 90 0 0 1 190 100" fill="none" stroke="#FDA4AF" strokeWidth="3" opacity="0.6" />
+            <path d="M 15 100 A 85 85 0 0 1 185 100" fill="none" stroke="#FDE047" strokeWidth="3" opacity="0.6" />
+            <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#86EFAC" strokeWidth="3" opacity="0.6" />
+            <path d="M 25 100 A 75 75 0 0 1 175 100" fill="none" stroke="#93C5FD" strokeWidth="3" opacity="0.6" />
+            <path d="M 30 100 A 70 70 0 0 1 170 100" fill="none" stroke="#D8B4FE" strokeWidth="3" opacity="0.6" />
+          </svg>
+        </div>
+      )}
+
+      {/* Night Sky / Moon */}
+      {(weather === 'night' || weather === 'starry_night' || decTypes.has('moon')) && (
+        <div className="absolute top-6 left-8 pointer-events-none flex items-center gap-2">
+          <div className="w-8 h-8 rounded-full bg-amber-100/90 shadow-[0_0_16px_rgba(254,240,138,0.7)] flex items-center justify-center text-xs">
+            🌙
+          </div>
+        </div>
+      )}
+
+      {/* Floating Cloud */}
+      {(weather === 'cloudy' || decTypes.has('cloud')) && (
         <motion.div
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="absolute top-2 left-1/2 -translate-x-1/2 z-30 max-w-[280px] bg-white/95 backdrop-blur-md px-3.5 py-2 rounded-2xl shadow-lg border border-amber-200 text-center pointer-events-none"
+          animate={{ x: [-10, 10, -10] }}
+          transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+          className="absolute top-6 right-6 pointer-events-none text-2xl opacity-70"
         >
-          <div className="text-[11px] font-semibold text-emerald-700 flex items-center justify-center gap-1">
-            <span>{hoveredMessage.senderAvatar || '🌱'}</span>
-            <span>{hoveredMessage.senderNickname}</span>
-            <span className="text-gray-400 font-mono text-[10px]">({hoveredMessage.senderFriendId})</span>
-          </div>
-          <div className="text-xs text-gray-700 mt-0.5 line-clamp-2 italic">
-            "{hoveredMessage.message}"
-          </div>
+          ☁️
         </motion.div>
       )}
 
-      {/* Background Soft Glow & Sunlight */}
-      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-amber-100/40 rounded-full blur-3xl pointer-events-none" />
-      {hasSunMessage && (
-        <div className="absolute top-4 right-6 w-36 h-36 bg-amber-200/50 rounded-full blur-2xl pointer-events-none animate-pulse" />
-      )}
-      {stage >= 4 && (
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 bg-emerald-100/40 rounded-full blur-3xl pointer-events-none animate-pulse" />
+      {/* Floating Fluttering Butterfly */}
+      {decTypes.has('butterfly') && (
+        <motion.div
+          animate={{
+            x: [-15, 25, -10],
+            y: [-10, 15, -10],
+            rotate: [-8, 8, -8]
+          }}
+          transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+          className="absolute top-24 left-10 text-xl pointer-events-none z-20"
+          title="Chú bướm nhỏ ghé thăm"
+        >
+          🦋
+        </motion.div>
       )}
 
-      {/* Swaying wrapper when clicked or during sowing */}
+      {/* ════════════════ SURPRISE PENDING GIFT ════════════════ */}
+      <AnimatePresence>
+        {hasPendingGift && (
+          <motion.div
+            initial={{ scale: 0, y: -20 }}
+            animate={{ scale: 1, y: [0, -6, 0] }}
+            exit={{ scale: 0, opacity: 0 }}
+            transition={{ y: { duration: 1.5, repeat: Infinity, ease: 'easeInOut' } }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenGift?.();
+            }}
+            className="absolute top-8 sm:top-10 left-1/2 -translate-x-1/2 z-30 cursor-pointer group flex flex-col items-center"
+          >
+            <div className="px-3 py-1 rounded-full bg-amber-500 text-white font-black text-xs shadow-lg flex items-center gap-1.5 animate-bounce">
+              <span>🎁</span>
+              <span>Có quà rơi ra! Nhấn mở</span>
+            </div>
+            <div className="text-3xl filter drop-shadow-md">
+              🎁
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ════════════════ PLANT SVG GRAPHIC ════════════════ */}
       <motion.div
         animate={
           isSowingAnim
-            ? { rotate: [0, -3, 3, -2, 2, 0], scale: [1, 1.05, 1] }
+            ? { rotate: [0, -4, 4, -2, 2, 0], scale: [1, 1.05, 1] }
             : { rotate: 0 }
         }
         transition={{ duration: 0.8, ease: 'easeInOut' }}
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ rotate: [-2, 2, 0], scale: 0.98 }}
-        className="w-full h-full relative flex items-end justify-center"
+        whileHover={{ scale: 1.015 }}
+        whileTap={{ rotate: [-2, 2, 0], scale: 0.985 }}
+        onClick={onPlantClick}
+        className="w-full h-full relative flex items-end justify-center cursor-pointer"
+        title="Nhấn nhẹ để chào cái cây của bạn 🌱"
       >
         <svg
-          viewBox="0 0 400 420"
-          className="w-full h-full overflow-visible drop-shadow-sm"
+          viewBox="0 0 400 430"
+          className="w-full h-full overflow-visible drop-shadow-xs"
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
         >
           <defs>
-            {/* Gradients */}
             <linearGradient id="potGrad" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="#FAF5EE" />
               <stop offset="50%" stopColor="#F4ECE1" />
@@ -149,7 +214,7 @@ export const PlantCanvasSvg: React.FC<PlantCanvasSvgProps> = ({
             </linearGradient>
 
             <filter id="softShadow" x="-10%" y="-10%" width="120%" height="120%">
-              <feDropShadow dx="0" dy="4" stdDeviation="6" floodOpacity="0.08" />
+              <feDropShadow dx="0" dy="4" stdDeviation="5" floodOpacity="0.08" />
             </filter>
 
             <filter id="glowEffect" x="-20%" y="-20%" width="140%" height="140%">
@@ -159,34 +224,34 @@ export const PlantCanvasSvg: React.FC<PlantCanvasSvgProps> = ({
           </defs>
 
           {/* Table / Surface Shadow */}
-          <ellipse cx="200" cy="405" rx="140" ry="12" fill="#000" fillOpacity="0.06" />
+          <ellipse cx="200" cy="410" rx="140" ry="12" fill="#000" fillOpacity="0.06" />
 
           {/* ════════════════ POT & SOIL ════════════════ */}
           <g id="pot-group" filter="url(#softShadow)">
             {/* Pot Body */}
             <path
-              d="M 130 320 L 145 395 C 146 400 152 404 160 404 L 240 404 C 248 404 254 400 255 395 L 270 320 Z"
+              d="M 130 325 L 145 400 C 146 405 152 409 160 409 L 240 409 C 248 409 254 405 255 400 L 270 325 Z"
               fill="url(#potGrad)"
               stroke="#D8C8B5"
               strokeWidth="1.5"
             />
-            {/* Pot subtle vertical ribbing/contour */}
-            <path d="M 170 325 L 178 395" stroke="#E6DACB" strokeWidth="1.5" strokeDasharray="3 3" opacity="0.6" />
-            <path d="M 230 325 L 222 395" stroke="#E6DACB" strokeWidth="1.5" strokeDasharray="3 3" opacity="0.6" />
+            {/* Ribbing */}
+            <path d="M 170 330 L 178 400" stroke="#E6DACB" strokeWidth="1.5" strokeDasharray="3 3" opacity="0.6" />
+            <path d="M 230 330 L 222 400" stroke="#E6DACB" strokeWidth="1.5" strokeDasharray="3 3" opacity="0.6" />
 
             {/* Soil */}
-            <ellipse cx="200" cy="320" rx="68" ry="15" fill="url(#soilGrad)" />
+            <ellipse cx="200" cy="325" rx="68" ry="15" fill="url(#soilGrad)" />
             {/* Soil pebbles / texture */}
-            <ellipse cx="175" cy="322" rx="4" ry="2" fill="#8D6E53" opacity="0.7" />
-            <ellipse cx="225" cy="321" rx="5" ry="2.5" fill="#5A3D24" opacity="0.6" />
-            <ellipse cx="198" cy="325" rx="3.5" ry="2" fill="#8D6E53" opacity="0.8" />
-            <ellipse cx="155" cy="319" rx="3" ry="1.5" fill="#422E1B" opacity="0.5" />
-            <ellipse cx="242" cy="322" rx="3.5" ry="1.5" fill="#78593E" opacity="0.6" />
+            <ellipse cx="175" cy="327" rx="4" ry="2" fill="#8D6E53" opacity="0.7" />
+            <ellipse cx="225" cy="326" rx="5" ry="2.5" fill="#5A3D24" opacity="0.6" />
+            <ellipse cx="198" cy="330" rx="3.5" ry="2" fill="#8D6E53" opacity="0.8" />
+            <ellipse cx="155" cy="324" rx="3" ry="1.5" fill="#422E1B" opacity="0.5" />
+            <ellipse cx="242" cy="327" rx="3.5" ry="1.5" fill="#78593E" opacity="0.6" />
 
             {/* Pot Rim */}
             <ellipse
               cx="200"
-              cy="316"
+              cy="321"
               rx="72"
               ry="16"
               fill="url(#potRimGrad)"
@@ -194,8 +259,8 @@ export const PlantCanvasSvg: React.FC<PlantCanvasSvgProps> = ({
               strokeWidth="1.5"
             />
 
-            {/* Cute pot motif / label: tiny stamped heart / plant emblem */}
-            <g transform="translate(193, 355) scale(0.8)">
+            {/* Pot emblem */}
+            <g transform="translate(193, 360) scale(0.8)">
               <circle cx="9" cy="9" r="10" fill="#E8D9C8" opacity="0.7" />
               <path
                 d="M 9 14 C 9 14 4 11 4 7.5 C 4 5.5 5.5 4 7.5 4 C 8.5 4 9 5 9 5 C 9 5 9.5 4 10.5 4 C 12.5 4 14 5.5 14 7.5 C 14 11 9 14 9 14 Z"
@@ -204,160 +269,181 @@ export const PlantCanvasSvg: React.FC<PlantCanvasSvgProps> = ({
             </g>
           </g>
 
-          {/* ════════════════ STAGE 1: SEEDLING / TINY SPROUT (0 - 2 seeds) ════════════════ */}
-          {stage === 1 && (
-            <g id="stage-1-sprout" className="transition-all duration-500">
-              {seedCount === 0 ? (
-                // 0 seeds: Just a tiny fresh green sprout peeking out of the soil mound
-                <g transform="translate(0, 0)">
-                  {/* Little earth mound */}
-                  <ellipse cx="200" cy="317" rx="14" ry="5" fill="#5A3D24" opacity="0.8" />
-                  
-                  {/* Tiny stem */}
-                  <path
-                    d="M 200 318 Q 199 300 200 288"
-                    stroke="url(#stemGrad)"
-                    strokeWidth="3.5"
-                    strokeLinecap="round"
-                  />
-                  
-                  {/* Two tiny cotyledon leaves */}
-                  <path
-                    d="M 200 288 C 190 280 185 292 200 293 Z"
-                    fill="url(#leafGrad)"
-                    stroke="#047857"
-                    strokeWidth="0.5"
-                  />
-                  <path
-                    d="M 200 288 C 210 280 215 292 200 293 Z"
-                    fill="url(#leafGrad)"
-                    stroke="#047857"
-                    strokeWidth="0.5"
-                  />
-                  
-                  {/* Dew drop */}
-                  <circle cx="199" cy="286" r="2" fill="#E0F2FE" opacity="0.9" />
-                </g>
-              ) : (
-                // 1-2 seeds: Growing sprout with tiny stem and reaching leaves
-                <g>
-                  {/* Stem */}
-                  <path
-                    d="M 200 318 Q 198 280 200 250"
-                    stroke="url(#stemGrad)"
-                    strokeWidth="4"
-                    strokeLinecap="round"
-                  />
-                  {/* Left leaf */}
-                  <path
-                    d="M 199 270 C 175 258 175 285 198 274 Z"
-                    fill="url(#leafGrad)"
-                    stroke="#059669"
-                    strokeWidth="0.5"
-                  />
-                  {/* Right leaf */}
-                  <path
-                    d="M 200 260 C 225 248 225 275 201 264 Z"
-                    fill="url(#leafGrad)"
-                    stroke="#059669"
-                    strokeWidth="0.5"
-                  />
-                  {/* Top tender shoot */}
-                  <path
-                    d="M 200 250 C 192 235 208 235 200 250 Z"
-                    fill="#A7F3D0"
-                  />
-                </g>
-              )}
+          {/* ════════════════ UNLOCKED DECORATIONS ON SOIL / POT ════════════════ */}
+          {/* Mushroom decoration */}
+          {decTypes.has('mushroom') && (
+            <g transform="translate(148, 312) scale(0.85)">
+              <path d="M 12 18 L 12 28" stroke="#D1D5DB" strokeWidth="4" strokeLinecap="round" />
+              <path d="M 4 18 C 4 10 20 10 20 18 Z" fill="#EF4444" />
+              <circle cx="8" cy="14" r="1.5" fill="#FFFFFF" />
+              <circle cx="14" cy="13" r="1.5" fill="#FFFFFF" />
             </g>
           )}
 
-          {/* ════════════════ STAGE 2: YOUNG PLANT (3 - 6 seeds) ════════════════ */}
+          {/* Flower on soil rim */}
+          {decTypes.has('flower') && (
+            <g transform="translate(242, 310) scale(0.85)">
+              <circle cx="10" cy="10" r="5" fill="#FDA4AF" />
+              <circle cx="10" cy="10" r="2.5" fill="#FDE047" />
+            </g>
+          )}
+
+          {/* Ladybug on pot */}
+          {decTypes.has('ladybug') && (
+            <g transform="translate(160, 345) scale(0.7)">
+              <ellipse cx="6" cy="6" rx="5" ry="4" fill="#DC2626" />
+              <circle cx="9" cy="6" r="2" fill="#1F2937" />
+              <circle cx="4" cy="4" r="1" fill="#1F2937" />
+              <circle cx="4" cy="8" r="1" fill="#1F2937" />
+            </g>
+          )}
+
+          {/* ════════════════ STAGE 1: 🌰 HẠT GIỐNG (Seed) ════════════════ */}
+          {stage === 1 && (
+            <g id="stage-1-seed" className="transition-all duration-500">
+              {/* Earth mound */}
+              <ellipse cx="200" cy="322" rx="16" ry="6" fill="#5A3D24" opacity="0.9" />
+
+              {/* Seed pod / seed resting in soil */}
+              <path
+                d="M 194 322 C 194 316 206 316 206 322 C 206 326 194 326 194 322 Z"
+                fill="#854D0E"
+                stroke="#A16207"
+                strokeWidth="1"
+              />
+              {/* Little sprout tip peeking out */}
+              <path
+                d="M 200 317 Q 198 308 201 302"
+                stroke="#10B981"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+              />
+              <circle cx="201" cy="301" r="2" fill="#34D399" />
+
+              {/* Dew drop glimmer */}
+              <circle cx="199" cy="318" r="1.5" fill="#E0F2FE" opacity="0.9" />
+            </g>
+          )}
+
+          {/* ════════════════ STAGE 2: 🌱 MẦM NHỎ (Sprout) ════════════════ */}
           {stage === 2 && (
-            <g id="stage-2-young-plant" className="transition-all duration-500">
+            <g id="stage-2-sprout" className="transition-all duration-500">
+              {/* Stem */}
+              <path
+                d="M 200 323 Q 197 280 200 248"
+                stroke="url(#stemGrad)"
+                strokeWidth="4"
+                strokeLinecap="round"
+              />
+              {/* Left cotyledon leaf */}
+              <path
+                d="M 199 270 C 172 258 172 288 198 274 Z"
+                fill="url(#leafGrad)"
+                stroke="#059669"
+                strokeWidth="0.5"
+              />
+              {/* Right leaf */}
+              <path
+                d="M 200 260 C 228 248 228 278 201 264 Z"
+                fill="url(#leafGrad)"
+                stroke="#059669"
+                strokeWidth="0.5"
+              />
+              {/* Tender shoot tip */}
+              <path
+                d="M 200 248 C 192 232 208 232 200 248 Z"
+                fill="#A7F3D0"
+              />
+              {/* Dew drop */}
+              <circle cx="188" cy="268" r="2" fill="#E0F2FE" opacity="0.8" />
+            </g>
+          )}
+
+          {/* ════════════════ STAGE 3: 🌿 CÂY NON (Sapling) ════════════════ */}
+          {stage === 3 && (
+            <g id="stage-3-sapling" className="transition-all duration-500">
               {/* Main Stem */}
               <path
-                d="M 200 318 Q 195 260 202 200"
+                d="M 200 323 Q 195 260 202 195"
                 stroke="url(#stemGrad)"
                 strokeWidth="5"
                 strokeLinecap="round"
               />
-              {/* Side Branches */}
-              <path d="M 198 280 Q 170 260 160 250" stroke="url(#stemGrad)" strokeWidth="3" strokeLinecap="round" />
-              <path d="M 201 255 Q 230 240 240 230" stroke="url(#stemGrad)" strokeWidth="3" strokeLinecap="round" />
-              <path d="M 199 225 Q 180 205 170 190" stroke="url(#stemGrad)" strokeWidth="2.5" strokeLinecap="round" />
+              {/* Branches */}
+              <path d="M 198 280 Q 170 260 160 248" stroke="url(#stemGrad)" strokeWidth="3" strokeLinecap="round" />
+              <path d="M 201 255 Q 230 240 240 228" stroke="url(#stemGrad)" strokeWidth="3" strokeLinecap="round" />
+              <path d="M 199 220 Q 175 200 165 185" stroke="url(#stemGrad)" strokeWidth="2.5" strokeLinecap="round" />
 
               {/* Leaves */}
-              <path d="M 160 250 C 135 235 140 270 160 252 Z" fill="url(#leafGrad)" />
-              <path d="M 240 230 C 265 215 260 250 240 232 Z" fill="url(#leafGrad)" />
-              <path d="M 170 190 C 150 175 155 205 170 192 Z" fill="url(#leafGrad)" />
-              <path d="M 202 200 C 190 175 214 175 202 200 Z" fill="url(#leafGrad)" />
-              <path d="M 185 240 C 165 228 170 255 186 242 Z" fill="url(#leafGrad)" />
-              <path d="M 215 220 C 235 208 230 235 214 222 Z" fill="url(#leafGrad)" />
+              <path d="M 160 248 C 135 235 140 270 160 250 Z" fill="url(#leafGrad)" />
+              <path d="M 240 228 C 265 215 260 250 240 230 Z" fill="url(#leafGrad)" />
+              <path d="M 165 185 C 145 170 150 200 165 187 Z" fill="url(#leafGrad)" />
+              <path d="M 202 195 C 190 170 214 170 202 195 Z" fill="url(#leafGrad)" />
+              <path d="M 185 238 C 165 225 170 252 186 240 Z" fill="url(#leafGrad)" />
+              <path d="M 215 218 C 235 205 230 232 214 220 Z" fill="url(#leafGrad)" />
             </g>
           )}
 
-          {/* ════════════════ STAGE 3: LARGER TREE / BUSH (7 - 12 seeds) ════════════════ */}
-          {stage === 3 && (
-            <g id="stage-3-bush" className="transition-all duration-500">
+          {/* ════════════════ STAGE 4: 🪴 CÂY LỚN (Growing Plant/Bush) ════════════════ */}
+          {stage === 4 && (
+            <g id="stage-4-growing" className="transition-all duration-500">
               {/* Wooden Trunk */}
               <path
-                d="M 196 318 Q 194 270 198 220 L 204 220 Q 206 270 204 318 Z"
+                d="M 196 323 Q 194 270 198 215 L 204 215 Q 206 270 204 323 Z"
                 fill="url(#trunkGrad)"
               />
               {/* Branches */}
-              <path d="M 197 250 Q 160 230 145 205" stroke="url(#trunkGrad)" strokeWidth="4" strokeLinecap="round" />
-              <path d="M 203 240 Q 240 220 255 195" stroke="url(#trunkGrad)" strokeWidth="4" strokeLinecap="round" />
-              <path d="M 199 220 Q 185 180 180 160" stroke="url(#trunkGrad)" strokeWidth="3" strokeLinecap="round" />
-              <path d="M 201 215 Q 215 175 225 155" stroke="url(#trunkGrad)" strokeWidth="3" strokeLinecap="round" />
+              <path d="M 197 250 Q 160 230 145 200" stroke="url(#trunkGrad)" strokeWidth="4" strokeLinecap="round" />
+              <path d="M 203 240 Q 240 220 255 190" stroke="url(#trunkGrad)" strokeWidth="4" strokeLinecap="round" />
+              <path d="M 199 215 Q 185 175 180 155" stroke="url(#trunkGrad)" strokeWidth="3" strokeLinecap="round" />
+              <path d="M 201 210 Q 215 170 225 150" stroke="url(#trunkGrad)" strokeWidth="3" strokeLinecap="round" />
 
               {/* Foliage Clusters */}
-              <circle cx="145" cy="195" r="28" fill="url(#leafGrad)" />
-              <circle cx="255" cy="185" r="28" fill="url(#leafGrad)" />
-              <circle cx="180" cy="150" r="32" fill="url(#leafGrad)" />
-              <circle cx="220" cy="145" r="32" fill="url(#matureLeafGrad)" />
-              <circle cx="200" cy="130" r="34" fill="url(#leafGrad)" />
+              <circle cx="145" cy="190" r="28" fill="url(#leafGrad)" />
+              <circle cx="255" cy="180" r="28" fill="url(#leafGrad)" />
+              <circle cx="180" cy="145" r="32" fill="url(#leafGrad)" />
+              <circle cx="220" cy="140" r="32" fill="url(#matureLeafGrad)" />
+              <circle cx="200" cy="125" r="35" fill="url(#leafGrad)" />
 
-              {/* Leaf texture accents */}
-              <path d="M 140 190 Q 130 170 145 180" stroke="#A7F3D0" strokeWidth="2" strokeLinecap="round" />
-              <path d="M 255 180 Q 270 165 250 175" stroke="#A7F3D0" strokeWidth="2" strokeLinecap="round" />
-              <path d="M 195 125 Q 200 105 205 125" stroke="#A7F3D0" strokeWidth="2" strokeLinecap="round" />
+              {/* Texture highlights */}
+              <path d="M 140 185 Q 130 165 145 175" stroke="#A7F3D0" strokeWidth="2" strokeLinecap="round" />
+              <path d="M 255 175 Q 270 160 250 170" stroke="#A7F3D0" strokeWidth="2" strokeLinecap="round" />
             </g>
           )}
 
-          {/* ════════════════ STAGE 4: MATURE FLOWERING TREE (13 - 20 seeds) ════════════════ */}
-          {stage === 4 && (
-            <g id="stage-4-flowering-tree" className="transition-all duration-500">
-              {/* Sturdy Trunk */}
+          {/* ════════════════ STAGE 5: 🌳 CÂY TRƯỞNG THÀNH (Mature Tree) ════════════════ */}
+          {stage === 5 && (
+            <g id="stage-5-mature" className="transition-all duration-500">
+              {/* Trunk */}
               <path
-                d="M 194 318 Q 192 250 197 180 L 205 180 Q 208 250 206 318 Z"
+                d="M 194 323 Q 192 250 197 175 L 205 175 Q 208 250 206 323 Z"
                 fill="url(#trunkGrad)"
               />
-              <path d="M 196 230 Q 140 210 120 180" stroke="url(#trunkGrad)" strokeWidth="5" strokeLinecap="round" />
-              <path d="M 204 220 Q 260 200 280 170" stroke="url(#trunkGrad)" strokeWidth="5" strokeLinecap="round" />
-              <path d="M 198 180 Q 165 140 155 110" stroke="url(#trunkGrad)" strokeWidth="3.5" strokeLinecap="round" />
-              <path d="M 202 180 Q 235 140 245 110" stroke="url(#trunkGrad)" strokeWidth="3.5" strokeLinecap="round" />
+              <path d="M 196 230 Q 140 210 120 175" stroke="url(#trunkGrad)" strokeWidth="5" strokeLinecap="round" />
+              <path d="M 204 220 Q 260 200 280 165" stroke="url(#trunkGrad)" strokeWidth="5" strokeLinecap="round" />
+              <path d="M 198 175 Q 165 135 155 105" stroke="url(#trunkGrad)" strokeWidth="3.5" strokeLinecap="round" />
+              <path d="M 202 175 Q 235 135 245 105" stroke="url(#trunkGrad)" strokeWidth="3.5" strokeLinecap="round" />
 
-              {/* Lush Canopy Clouds */}
-              <circle cx="125" cy="170" r="35" fill="url(#leafGrad)" />
-              <circle cx="275" cy="160" r="35" fill="url(#leafGrad)" />
-              <circle cx="155" cy="115" r="40" fill="url(#matureLeafGrad)" />
-              <circle cx="245" cy="115" r="40" fill="url(#leafGrad)" />
-              <circle cx="200" cy="95" r="45" fill="url(#matureLeafGrad)" />
-              <circle cx="170" cy="145" r="35" fill="url(#leafGrad)" />
-              <circle cx="230" cy="145" r="35" fill="url(#matureLeafGrad)" />
+              {/* Canopy */}
+              <circle cx="125" cy="165" r="35" fill="url(#leafGrad)" />
+              <circle cx="275" cy="155" r="35" fill="url(#leafGrad)" />
+              <circle cx="155" cy="110" r="40" fill="url(#matureLeafGrad)" />
+              <circle cx="245" cy="110" r="40" fill="url(#leafGrad)" />
+              <circle cx="200" cy="90" r="45" fill="url(#matureLeafGrad)" />
+              <circle cx="170" cy="140" r="35" fill="url(#leafGrad)" />
+              <circle cx="230" cy="140" r="35" fill="url(#matureLeafGrad)" />
 
-              {/* Blooming Flowers 🌸 */}
+              {/* Flowers 🌸 */}
               {[
-                { x: 120, y: 155 },
-                { x: 280, y: 150 },
-                { x: 150, y: 100 },
-                { x: 250, y: 105 },
-                { x: 200, y: 80 },
-                { x: 185, y: 140 },
-                { x: 220, y: 135 }
+                { x: 120, y: 150 },
+                { x: 280, y: 145 },
+                { x: 150, y: 95 },
+                { x: 250, y: 100 },
+                { x: 200, y: 75 },
+                { x: 185, y: 135 },
+                { x: 220, y: 130 }
               ].map((pos, idx) => (
-                <g key={`flower-${idx}`} transform={`translate(${pos.x}, ${pos.y}) scale(0.9)`}>
+                <g key={`fl-${idx}`} transform={`translate(${pos.x}, ${pos.y}) scale(0.9)`}>
                   <circle cx="0" cy="0" r="8" fill="url(#flowerGrad)" />
                   <circle cx="-5" cy="-3" r="5" fill="#FFE4E6" />
                   <circle cx="5" cy="-3" r="5" fill="#FFE4E6" />
@@ -366,14 +452,14 @@ export const PlantCanvasSvg: React.FC<PlantCanvasSvgProps> = ({
                 </g>
               ))}
 
-              {/* Sweet fruits 🍎/🍊 */}
+              {/* Sweet fruits 🍎 */}
               {[
-                { x: 140, y: 180 },
-                { x: 260, y: 175 },
-                { x: 180, y: 110 },
-                { x: 225, y: 115 }
+                { x: 140, y: 175 },
+                { x: 260, y: 170 },
+                { x: 180, y: 105 },
+                { x: 225, y: 110 }
               ].map((pos, idx) => (
-                <g key={`fruit-${idx}`} transform={`translate(${pos.x}, ${pos.y})`}>
+                <g key={`fr-${idx}`} transform={`translate(${pos.x}, ${pos.y})`}>
                   <circle cx="0" cy="0" r="6" fill="url(#fruitGrad)" />
                   <path d="M 0 -6 Q 2 -9 4 -8" stroke="#4A3422" strokeWidth="1" fill="none" />
                 </g>
@@ -381,46 +467,45 @@ export const PlantCanvasSvg: React.FC<PlantCanvasSvgProps> = ({
             </g>
           )}
 
-          {/* ════════════════ STAGE 5: SPECIAL / VIBRANT TREE (21+ seeds) ════════════════ */}
-          {stage === 5 && (
-            <g id="stage-5-magical-tree" className="transition-all duration-500">
+          {/* ════════════════ STAGE 6: ✨ CÂY ĐẶC BIỆT (Magical Bloom) ════════════════ */}
+          {stage === 6 && (
+            <g id="stage-6-magical" className="transition-all duration-500">
               {/* Grand Trunk with Roots */}
               <path
-                d="M 192 318 Q 185 240 196 160 L 206 160 Q 215 240 208 318 Z"
+                d="M 192 323 Q 185 240 196 155 L 206 155 Q 215 240 208 323 Z"
                 fill="url(#trunkGrad)"
               />
-              {/* Exposed gentle roots hugging the soil */}
-              <path d="M 193 315 Q 170 320 155 323" stroke="url(#trunkGrad)" strokeWidth="4" strokeLinecap="round" />
-              <path d="M 207 315 Q 230 320 245 323" stroke="url(#trunkGrad)" strokeWidth="4" strokeLinecap="round" />
+              <path d="M 193 320 Q 170 325 155 328" stroke="url(#trunkGrad)" strokeWidth="4" strokeLinecap="round" />
+              <path d="M 207 320 Q 230 325 245 328" stroke="url(#trunkGrad)" strokeWidth="4" strokeLinecap="round" />
 
-              {/* Spreading Majestic Branches */}
-              <path d="M 194 220 Q 130 190 105 160" stroke="url(#trunkGrad)" strokeWidth="6" strokeLinecap="round" />
-              <path d="M 206 210 Q 270 180 295 150" stroke="url(#trunkGrad)" strokeWidth="6" strokeLinecap="round" />
-              <path d="M 197 160 Q 150 120 140 80" stroke="url(#trunkGrad)" strokeWidth="4" strokeLinecap="round" />
-              <path d="M 203 160 Q 250 120 260 80" stroke="url(#trunkGrad)" strokeWidth="4" strokeLinecap="round" />
+              {/* Spreading Branches */}
+              <path d="M 194 215 Q 130 185 105 155" stroke="url(#trunkGrad)" strokeWidth="6" strokeLinecap="round" />
+              <path d="M 206 205 Q 270 175 295 145" stroke="url(#trunkGrad)" strokeWidth="6" strokeLinecap="round" />
+              <path d="M 197 155 Q 150 115 140 75" stroke="url(#trunkGrad)" strokeWidth="4" strokeLinecap="round" />
+              <path d="M 203 155 Q 250 115 260 75" stroke="url(#trunkGrad)" strokeWidth="4" strokeLinecap="round" />
 
               {/* Majestic Canopy with Golden/Emerald Glow */}
-              <circle cx="105" cy="150" r="42" fill="url(#leafGrad)" />
-              <circle cx="295" cy="140" r="42" fill="url(#leafGrad)" />
-              <circle cx="140" cy="85" r="46" fill="url(#matureLeafGrad)" />
-              <circle cx="260" cy="85" r="46" fill="url(#matureLeafGrad)" />
-              <circle cx="200" cy="65" r="52" fill="url(#matureLeafGrad)" />
-              <circle cx="160" cy="120" r="42" fill="url(#leafGrad)" />
-              <circle cx="240" cy="120" r="42" fill="url(#matureLeafGrad)" />
+              <circle cx="105" cy="145" r="42" fill="url(#leafGrad)" />
+              <circle cx="295" cy="135" r="42" fill="url(#leafGrad)" />
+              <circle cx="140" cy="80" r="46" fill="url(#matureLeafGrad)" />
+              <circle cx="260" cy="80" r="46" fill="url(#matureLeafGrad)" />
+              <circle cx="200" cy="60" r="52" fill="url(#matureLeafGrad)" />
+              <circle cx="160" cy="115" r="42" fill="url(#leafGrad)" />
+              <circle cx="240" cy="115" r="42" fill="url(#matureLeafGrad)" />
 
               {/* Flowers Everywhere */}
               {[
-                { x: 100, y: 135 },
-                { x: 300, y: 125 },
-                { x: 135, y: 70 },
-                { x: 265, y: 70 },
-                { x: 200, y: 50 },
-                { x: 170, y: 105 },
-                { x: 230, y: 100 },
-                { x: 125, y: 170 },
-                { x: 275, y: 160 }
+                { x: 100, y: 130 },
+                { x: 300, y: 120 },
+                { x: 135, y: 65 },
+                { x: 265, y: 65 },
+                { x: 200, y: 45 },
+                { x: 170, y: 100 },
+                { x: 230, y: 95 },
+                { x: 125, y: 165 },
+                { x: 275, y: 155 }
               ].map((pos, idx) => (
-                <g key={`flower5-${idx}`} transform={`translate(${pos.x}, ${pos.y})`}>
+                <g key={`fl6-${idx}`} transform={`translate(${pos.x}, ${pos.y})`}>
                   <circle cx="0" cy="0" r="7" fill="url(#flowerGrad)" />
                   <circle cx="-4" cy="-2" r="4" fill="#FFE4E6" />
                   <circle cx="4" cy="-2" r="4" fill="#FFE4E6" />
@@ -431,14 +516,14 @@ export const PlantCanvasSvg: React.FC<PlantCanvasSvgProps> = ({
 
               {/* Glowing Golden Fruits */}
               {[
-                { x: 115, y: 160 },
-                { x: 285, y: 155 },
-                { x: 150, y: 140 },
-                { x: 250, y: 140 },
-                { x: 185, y: 80 },
-                { x: 215, y: 80 }
+                { x: 115, y: 155 },
+                { x: 285, y: 150 },
+                { x: 150, y: 135 },
+                { x: 250, y: 135 },
+                { x: 185, y: 75 },
+                { x: 215, y: 75 }
               ].map((pos, idx) => (
-                <g key={`fruit5-${idx}`} transform={`translate(${pos.x}, ${pos.y})`}>
+                <g key={`fr6-${idx}`} transform={`translate(${pos.x}, ${pos.y})`}>
                   <circle cx="0" cy="0" r="6" fill="url(#fruitGrad)" />
                   <circle cx="-1.5" cy="-1.5" r="2" fill="#FEF08A" opacity="0.8" />
                 </g>
@@ -446,87 +531,20 @@ export const PlantCanvasSvg: React.FC<PlantCanvasSvgProps> = ({
 
               {/* Magical Fireflies / Glowing Particles ✨ */}
               {[
-                { x: 80, y: 110, s: 3 },
-                { x: 320, y: 100, s: 3.5 },
-                { x: 160, y: 40, s: 2.5 },
-                { x: 240, y: 35, s: 3 },
-                { x: 190, y: 180, s: 2 },
-                { x: 220, y: 190, s: 2.5 },
-                { x: 110, y: 220, s: 2.5 },
-                { x: 290, y: 210, s: 3 }
+                { x: 80, y: 105, s: 3 },
+                { x: 320, y: 95, s: 3.5 },
+                { x: 160, y: 35, s: 2.5 },
+                { x: 240, y: 30, s: 3 },
+                { x: 190, y: 175, s: 2 },
+                { x: 220, y: 185, s: 2.5 },
+                { x: 110, y: 215, s: 2.5 },
+                { x: 290, y: 205, s: 3 }
               ].map((p, idx) => (
                 <g key={`firefly-${idx}`} filter="url(#glowEffect)">
                   <circle cx={p.x} cy={p.y} r={p.s} fill="#FEF08A" />
                   <circle cx={p.x} cy={p.y} r={p.s * 2.2} fill="#FDE047" opacity="0.3" />
                 </g>
               ))}
-            </g>
-          )}
-
-          {/* Encouragement gifts from friends (🌸 flower, 🍃 leaf, ☀️ sun, 💧 dew, 🍎 fruit) */}
-          {encouragementMessages.length > 0 && (
-            <g id="encouragementGifts">
-              {encouragementMessages.slice(0, ENCOURAGEMENT_SLOTS.length).map((msg, idx) => {
-                const slot = ENCOURAGEMENT_SLOTS[idx % ENCOURAGEMENT_SLOTS.length];
-                return (
-                  <g
-                    key={msg.id || `encourage-${idx}`}
-                    transform={`translate(${slot.x}, ${slot.y})`}
-                    className="cursor-pointer transition-transform hover:scale-125"
-                    onMouseEnter={() => setHoveredMessage(msg)}
-                    onMouseLeave={() => setHoveredMessage(null)}
-                  >
-                    {msg.visualEffect === 'flower' && (
-                      <g>
-                        <circle cx="0" cy="0" r="9" fill="#FDA4AF" opacity="0.4" />
-                        <circle cx="0" cy="0" r="6.5" fill="#FB7185" />
-                        <circle cx="-3.5" cy="-2" r="3.5" fill="#FFE4E6" />
-                        <circle cx="3.5" cy="-2" r="3.5" fill="#FFE4E6" />
-                        <circle cx="0" cy="3.5" r="3.5" fill="#FFE4E6" />
-                        <circle cx="0" cy="0" r="2.5" fill="#FDE047" />
-                      </g>
-                    )}
-                    {msg.visualEffect === 'leaf' && (
-                      <g>
-                        <circle cx="0" cy="0" r="8" fill="#6EE7B7" opacity="0.3" />
-                        <path
-                          d="M0 -8 C6 -4 6 4 0 8 C-6 4 -6 -4 0 -8 Z"
-                          fill="#10B981"
-                        />
-                        <path d="M0 -6 L0 6" stroke="#A7F3D0" strokeWidth="1" />
-                      </g>
-                    )}
-                    {msg.visualEffect === 'sun' && (
-                      <g>
-                        <circle cx="0" cy="0" r="9" fill="#FDE047" opacity="0.4" />
-                        <circle cx="0" cy="0" r="5.5" fill="#F59E0B" />
-                        <circle cx="0" cy="0" r="3.5" fill="#FEF08A" />
-                        <line x1="0" y1="-8" x2="0" y2="-11" stroke="#F59E0B" strokeWidth="1.5" strokeLinecap="round" />
-                        <line x1="0" y1="8" x2="0" y2="11" stroke="#F59E0B" strokeWidth="1.5" strokeLinecap="round" />
-                        <line x1="-8" y1="0" x2="-11" y2="0" stroke="#F59E0B" strokeWidth="1.5" strokeLinecap="round" />
-                        <line x1="8" y1="0" x2="11" y2="0" stroke="#F59E0B" strokeWidth="1.5" strokeLinecap="round" />
-                      </g>
-                    )}
-                    {msg.visualEffect === 'dew' && (
-                      <g>
-                        <circle cx="0" cy="0" r="8" fill="#93C5FD" opacity="0.3" />
-                        <path
-                          d="M0 -7 C4 -2 4 4 0 6 C-4 4 -4 -2 0 -7 Z"
-                          fill="#38BDF8"
-                        />
-                        <circle cx="-1" cy="0" r="1.2" fill="#FFFFFF" opacity="0.8" />
-                      </g>
-                    )}
-                    {msg.visualEffect === 'fruit' && (
-                      <g>
-                        <circle cx="0" cy="0" r="7.5" fill="#EF4444" />
-                        <circle cx="-1.5" cy="-1.5" r="2.5" fill="#FCA5A5" opacity="0.8" />
-                        <path d="M0 -7 C2 -9 4 -8 5 -6" stroke="#059669" strokeWidth="1.5" fill="none" />
-                      </g>
-                    )}
-                  </g>
-                );
-              })}
             </g>
           )}
         </svg>

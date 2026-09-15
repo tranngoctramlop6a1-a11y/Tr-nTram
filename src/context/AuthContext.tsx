@@ -5,10 +5,9 @@ export interface AuthUser {
   email?: string;
   nickname: string;
   avatar: string;
-  friend_id: string;
+  has_password?: boolean;
   created_at: string;
   createdAt?: string;
-  friendCount?: number;
 }
 
 interface AuthContextType {
@@ -32,6 +31,11 @@ interface AuthContextType {
   closeNicknameModal: () => void;
   enterAsGuest: () => void;
   loginWithGoogle: (emailOrToken: string, suggestedNickname?: string, avatar?: string) => Promise<{ success: boolean; isNew?: boolean; error?: string }>;
+  loginWithEmailPassword: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  registerWithEmailPassword: (email: string, password: string, nickname?: string) => Promise<{ success: boolean; error?: string }>;
+  requestPasswordReset: (email: string) => Promise<{ success: boolean; resetCode?: string; message?: string; error?: string }>;
+  confirmPasswordReset: (email: string, code: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
+  changePassword: (newPassword: string, currentPassword?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   updateProfile: (nickname: string, avatar: string) => Promise<{ success: boolean; error?: string }>;
   uploadAvatar: (avatarDataUrl: string) => Promise<{ success: boolean; error?: string }>;
@@ -77,30 +81,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const savedUser = localStorage.getItem(getUserStorageKey(activeEmail));
         if (savedUser) {
           const parsed = JSON.parse(savedUser);
-          if (!parsed.friend_id) {
-            parsed.friend_id = (parsed.email || activeEmail).split('@')[0].replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase() + '1001';
-          }
           if (!parsed.created_at) {
             parsed.created_at = parsed.createdAt || new Date().toISOString();
           }
-          return parsed;
-        }
-      }
-      // Fallback kiểm tra dữ liệu cũ nếu có
-      const legacySaved = localStorage.getItem('teen_user_data');
-      if (legacySaved) {
-        const parsed = JSON.parse(legacySaved);
-        if (parsed?.email) {
-          if (!parsed.friend_id) {
-            parsed.friend_id = parsed.email.split('@')[0].replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase() + '1001';
-          }
-          if (!parsed.created_at) {
-            parsed.created_at = parsed.createdAt || new Date().toISOString();
-          }
-          localStorage.setItem(getUserStorageKey(parsed.email), JSON.stringify(parsed));
-          localStorage.setItem(ACTIVE_USER_EMAIL_KEY, parsed.email);
-          localStorage.removeItem('teen_user_data');
-          return parsed;
+          return {
+            id: parsed.id,
+            email: parsed.email || activeEmail,
+            nickname: parsed.nickname || 'Bạn',
+            avatar: parsed.avatar || '🌱',
+            created_at: parsed.created_at,
+            createdAt: parsed.createdAt || parsed.created_at
+          };
         }
       }
     } catch {}
@@ -151,6 +142,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoginModalOpen(false);
   }, []);
 
+  const establishSession = useCallback((
+    activeToken: string,
+    serverUser: any,
+    isNewUser = false
+  ) => {
+    const cleanEmail = (serverUser.email || '').toLowerCase().trim();
+    const userKey = getUserStorageKey(cleanEmail);
+
+    const userData: AuthUser = {
+      id: serverUser.id,
+      email: cleanEmail,
+      nickname: serverUser.nickname || cleanEmail.split('@')[0] || 'Bạn nhỏ',
+      avatar: serverUser.avatar || '🌱',
+      has_password: Boolean(serverUser.has_password),
+      created_at: serverUser.created_at || new Date().toISOString(),
+      createdAt: serverUser.created_at || new Date().toISOString()
+    };
+
+    localStorage.setItem(TOKEN_KEY, activeToken);
+    localStorage.setItem(WELCOMED_KEY, 'account');
+    if (cleanEmail) {
+      localStorage.setItem(ACTIVE_USER_EMAIL_KEY, cleanEmail);
+      localStorage.setItem(userKey, JSON.stringify(userData));
+    }
+
+    setToken(activeToken);
+    setUser(userData);
+    setIsGuest(false);
+    setIsWelcomeModalOpen(false);
+    setIsLoginModalOpen(false);
+
+    window.dispatchEvent(
+      new CustomEvent('teen_account_changed', {
+        detail: { action: 'login', userId: userData.id }
+      })
+    );
+
+    if (isNewUser) {
+      setIsNicknameModalOpen(true);
+      const count = checkGuestJournals();
+      if (count > 0) {
+        setTimeout(() => setIsMigrationModalOpen(true), 1000);
+      }
+    }
+  }, [checkGuestJournals]);
+
   const loginWithGoogle = useCallback(async (
     emailOrToken: string,
     suggestedNickname?: string,
@@ -160,7 +197,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       let email = emailOrToken;
       let name = suggestedNickname || '';
       let picture = avatar || '🌱';
-      let id = `user_${Date.now()}`;
+      let id = `usr_${Date.now()}`;
 
       if (emailOrToken.includes('.')) {
         const decoded = parseJwt(emailOrToken);
@@ -173,89 +210,179 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       const cleanEmail = email.toLowerCase().trim();
-      const userKey = getUserStorageKey(cleanEmail);
-      
-      // Kiểm tra xem tài khoản email này đã từng đăng nhập trước đó chưa
-      const existingUserData = localStorage.getItem(userKey);
-      let userData: AuthUser;
-      let isNewUser = false;
-
-      if (existingUserData) {
-        // Nếu đã có rồi, giữ nguyên thông tin cũ (nickname, avatar đã tùy chỉnh) nhưng cập nhật token
-        userData = JSON.parse(existingUserData);
-        if (!userData.friend_id) {
-          userData.friend_id = cleanEmail.split('@')[0].replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase() + '1001';
-        }
-        if (!userData.created_at) {
-          userData.created_at = userData.createdAt || new Date().toISOString();
-        }
-      } else {
-        // Nếu là lần đầu đăng nhập bằng Gmail này
-        isNewUser = true;
-        const generatedFriendId = cleanEmail.split('@')[0].replace(/[^a-zA-Z0-9]/g, '').slice(0, 6).toUpperCase() + Math.floor(1000 + Math.random() * 9000);
-        userData = {
-          id,
-          email: cleanEmail,
-          nickname: name || cleanEmail.split('@')[0],
-          avatar: picture,
-          friend_id: generatedFriendId,
-          created_at: new Date().toISOString(),
-          createdAt: new Date().toISOString()
-        };
-      }
-
       let activeToken = 'mock_token_' + Date.now();
+      let isNewUser = false;
+      let serverUser: any = {
+        id,
+        email: cleanEmail,
+        nickname: name || cleanEmail.split('@')[0],
+        avatar: picture,
+        created_at: new Date().toISOString()
+      };
 
-      // Đồng bộ phiên đăng nhập với máy chủ để xác thực API Bạn bè và Đồng hành
       try {
         const authRes = await fetch('/api/auth/google', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             email: cleanEmail,
-            suggestedNickname: userData.nickname,
-            suggestedAvatar: userData.avatar
+            suggestedNickname: name || cleanEmail.split('@')[0],
+            suggestedAvatar: picture
           })
         });
         if (authRes.ok) {
           const authData = await authRes.json();
-          if (authData.token) {
-            activeToken = authData.token;
-          }
-          if (authData.user?.friend_id) {
-            userData.friend_id = authData.user.friend_id;
-          }
+          if (authData.token) activeToken = authData.token;
+          if (authData.user) serverUser = authData.user;
+          if (authData.isNew) isNewUser = true;
         }
       } catch (err) {
         console.warn('Không thể kết nối API xác thực máy chủ, sử dụng phiên cục bộ:', err);
       }
 
-      localStorage.setItem(TOKEN_KEY, activeToken);
-      localStorage.setItem(WELCOMED_KEY, 'account');
-      localStorage.setItem(ACTIVE_USER_EMAIL_KEY, cleanEmail);
-      localStorage.setItem(userKey, JSON.stringify(userData));
-
-      setToken(activeToken);
-      setUser(userData);
-      setIsGuest(false);
-      setIsWelcomeModalOpen(false);
-      setIsLoginModalOpen(false);
-
-      // Chỉ bật modal đổi biệt danh nếu thực sự là tài khoản mới tinh
-      if (isNewUser) {
-        setIsNicknameModalOpen(true);
-      }
-
-      const count = checkGuestJournals();
-      if (count > 0) {
-        setTimeout(() => setIsMigrationModalOpen(true), isNewUser ? 1200 : 300);
-      }
-
+      establishSession(activeToken, serverUser, isNewUser);
       return { success: true, isNew: isNewUser };
     } catch (e: any) {
-      return { success: false, error: e.message || 'Đăng nhập thất bại.' };
+      return { success: false, error: e.message || 'Đăng nhập Google thất bại.' };
     }
-  }, [checkGuestJournals]);
+  }, [establishSession]);
+
+  // Login with Website Email & Password
+  const loginWithEmailPassword = useCallback(async (email: string, password: string) => {
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), password })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        return { success: false, error: data.error || 'Đăng nhập không thành công.' };
+      }
+
+      establishSession(data.token, data.user, false);
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Lỗi kết nối máy chủ.' };
+    }
+  }, [establishSession]);
+
+  // Register with Website Email & Password
+  const registerWithEmailPassword = useCallback(async (email: string, password: string, nickname?: string) => {
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+          nickname: nickname?.trim()
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        return { success: false, error: data.error || 'Đăng ký không thành công.' };
+      }
+
+      establishSession(data.token, data.user, true);
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Lỗi kết nối máy chủ.' };
+    }
+  }, [establishSession]);
+
+  // Request password reset verification code
+  const requestPasswordReset = useCallback(async (email: string) => {
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Không thể yêu cầu đặt lại mật khẩu.' };
+      }
+
+      return {
+        success: true,
+        resetCode: data.resetCode,
+        message: data.message
+      };
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Lỗi kết nối khi gửi yêu cầu.' };
+    }
+  }, []);
+
+  // Confirm password reset with code (preserves UID & all data)
+  const confirmPasswordReset = useCallback(async (email: string, code: string, newPassword: string) => {
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: email.trim(),
+          code: code.trim(),
+          newPassword
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        return { success: false, error: data.error || 'Đặt lại mật khẩu thất bại.' };
+      }
+
+      if (data.token && data.user) {
+        establishSession(data.token, data.user, false);
+      }
+
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Lỗi kết nối khi cập nhật mật khẩu.' };
+    }
+  }, [establishSession]);
+
+  // Change password for currently logged-in user
+  const changePassword = useCallback(async (newPassword: string, currentPassword?: string) => {
+    if (!token) {
+      return { success: false, error: 'Bạn cần đăng nhập để đổi mật khẩu.' };
+    }
+
+    try {
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          currentPassword,
+          newPassword
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        return { success: false, error: data.error || 'Đổi mật khẩu thất bại.' };
+      }
+
+      // Mark user as having a password set
+      if (user) {
+        const updated = { ...user, has_password: true };
+        setUser(updated);
+        if (user.email) {
+          localStorage.setItem(getUserStorageKey(user.email), JSON.stringify(updated));
+        }
+      }
+
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Lỗi khi gửi yêu cầu đổi mật khẩu.' };
+    }
+  }, [token, user]);
 
   const logout = useCallback(async () => {
     localStorage.removeItem(TOKEN_KEY);
@@ -264,50 +391,133 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
     setIsGuest(true);
     setIsProfileModalOpen(false);
+    window.dispatchEvent(new CustomEvent('teen_account_changed', { detail: { action: 'logout' } }));
   }, []);
 
   const updateProfile = useCallback(async (nickname: string, avatar: string) => {
-    if (user) {
-      const updated = { ...user, nickname, avatar };
+    if (user && user.email) {
+      const updated: AuthUser = { ...user, nickname, avatar };
       setUser(updated);
       localStorage.setItem(getUserStorageKey(user.email), JSON.stringify(updated));
+
+      if (token) {
+        fetch('/api/users/profile', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ nickname, avatar })
+        }).catch(() => {});
+      }
     }
     return { success: true };
-  }, [user]);
+  }, [user, token]);
 
   const uploadAvatar = useCallback(async (avatarDataUrl: string) => {
-    if (user) {
-      const updated = { ...user, avatar: avatarDataUrl };
+    if (user && user.email) {
+      const updated: AuthUser = { ...user, avatar: avatarDataUrl };
       setUser(updated);
       localStorage.setItem(getUserStorageKey(user.email), JSON.stringify(updated));
+
+      if (token) {
+        fetch('/api/users/avatar', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ avatar: avatarDataUrl })
+        }).catch(() => {});
+      }
     }
     return { success: true };
-  }, [user]);
+  }, [user, token]);
 
   const removeAvatar = useCallback(async () => {
-    if (user) {
-      const updated = { ...user, avatar: '🌱' };
+    if (user && user.email) {
+      const updated: AuthUser = { ...user, avatar: '🌱' };
       setUser(updated);
       localStorage.setItem(getUserStorageKey(user.email), JSON.stringify(updated));
+
+      if (token) {
+        fetch('/api/users/avatar', {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }).catch(() => {});
+      }
     }
     return { success: true };
-  }, [user]);
+  }, [user, token]);
 
   const deleteAccount = useCallback(async () => {
+    if (token) {
+      try {
+        await fetch('/api/users/account', {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      } catch (e) {
+        console.error('Lỗi khi gọi API xóa tài khoản:', e);
+      }
+    }
     if (user) {
-      localStorage.removeItem(getUserStorageKey(user.email));
+      if (user.email) {
+        localStorage.removeItem(getUserStorageKey(user.email));
+      }
+      localStorage.removeItem(`teen_journal_${user.id}_entries`);
+      localStorage.removeItem(`teen_journal_${user.id}_capsules`);
+      localStorage.removeItem(`teen_plant_${user.id}_seeds`);
+      localStorage.removeItem(`self_letters_list_${user.id}`);
+      localStorage.removeItem(`self_letter_draft_${user.id}`);
+      localStorage.removeItem(`fast_math_best_${user.id}`);
+      localStorage.removeItem(`teen_chat_history_${user.id}`);
     }
     await logout();
     return { success: true };
-  }, [user, logout]);
+  }, [user, token, logout]);
 
   const migrateGuestJournal = useCallback(async () => {
     setIsMigrationModalOpen(false);
+    // After migration, clear guest entries so next accounts don't see them
+    localStorage.removeItem(GUEST_JOURNAL_KEY);
+    setGuestJournalCount(0);
     return { success: true, count: guestJournalCount };
   }, [guestJournalCount]);
 
-  const declineMigration = useCallback(() => setIsMigrationModalOpen(false), []);
-  const refreshUser = useCallback(async () => {}, []);
+  const declineMigration = useCallback(() => {
+    setIsMigrationModalOpen(false);
+    // User declined to migrate guest entries to this account
+  }, []);
+  const refreshUser = useCallback(async () => {
+    const savedToken = localStorage.getItem(TOKEN_KEY);
+    if (!savedToken) return;
+    try {
+      const res = await fetch('/api/auth/me', {
+        headers: { Authorization: `Bearer ${savedToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.user) {
+          const u: AuthUser = {
+            id: data.user.id,
+            email: data.user.email,
+            nickname: data.user.nickname,
+            avatar: data.user.avatar,
+            has_password: Boolean(data.user.has_password),
+            created_at: data.user.created_at,
+            createdAt: data.user.created_at
+          };
+          setUser(u);
+          if (u.email) {
+            localStorage.setItem(getUserStorageKey(u.email), JSON.stringify(u));
+          }
+        }
+      }
+    } catch {}
+  }, []);
 
   return (
     <AuthContext.Provider
@@ -322,7 +532,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         closeProfileModal: () => setIsProfileModalOpen(false),
         openNicknameModal: () => setIsNicknameModalOpen(true),
         closeNicknameModal: () => setIsNicknameModalOpen(false),
-        enterAsGuest, loginWithGoogle, logout, updateProfile, uploadAvatar, removeAvatar, deleteAccount, migrateGuestJournal, declineMigration, refreshUser
+        enterAsGuest,
+        loginWithGoogle,
+        loginWithEmailPassword,
+        registerWithEmailPassword,
+        requestPasswordReset,
+        confirmPasswordReset,
+        changePassword,
+        logout,
+        updateProfile,
+        uploadAvatar,
+        removeAvatar,
+        deleteAccount,
+        migrateGuestJournal,
+        declineMigration,
+        refreshUser
       }}
     >
       {children}

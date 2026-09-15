@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Sparkles,
@@ -6,173 +6,185 @@ import {
   PenTool,
   Heart,
   ShieldCheck,
-  Info,
-  Calendar,
-  Layers,
+  CloudCheck,
+  Gift,
   HelpCircle,
-  CheckCircle2,
-  Lock
+  MessageCircle,
+  Sun,
+  CloudRain,
+  RotateCcw
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { EmotionSeedItem, SeedGrowthEffect, PlantCareMessage, PlantPermissions } from '../../types';
+import {
+  EmotionSeedItem,
+  SeedGrowthEffect,
+  PlantWeatherType,
+  PlantEmotionType,
+  GardenDecorationItem,
+  PlantRewardItem,
+  DailyPlantLog,
+  FullPlantState
+} from '../../types';
 import { PlantCanvasSvg } from './PlantCanvasSvg';
 import { SeedBoxSvg } from './SeedBoxSvg';
 import { CircularCanvasModal } from './CircularCanvasModal';
 import { EmotionHistoryModal } from './EmotionHistoryModal';
-import { PlantMessagesModal } from './PlantMessagesModal';
+import { EmotionBar } from './EmotionBar';
+import { FertilizerSection } from './FertilizerSection';
+import { RewardGiftModal } from './RewardGiftModal';
+import { GardenDecorationsModal } from './GardenDecorationsModal';
+import {
+  PLANT_EMOTIONS,
+  WEATHER_CONFIG,
+  getBaseWeatherForDate,
+  getRequiredFertilizerForDate,
+  getTodayDateString,
+  getRandomSowingMessage,
+  getDailyPlantGreeting,
+  calculatePlantStage,
+  getStageDetails,
+  pickRandomReward
+} from './plantUtils';
 
-const STORAGE_KEY = 'emotion_plant_seeds_v1';
+const getPlantStorageKey = (userId?: string) =>
+  userId ? `teen_plant_${userId}_full_state` : 'teen_plant_guest_full_state';
 
-const REASSURANCE_MESSAGES = [
-  '🌱 Một cảm xúc nữa đã được gieo xuống.',
-  '🍃 Cây của bạn vừa nhận được một điều mới.',
-  'Hôm nay cũng được tính.',
-  'Cảm xúc nào cũng xứng đáng có một chỗ trú ngụ.',
-  'Bạn đã ở đây, và bạn đã dịu dàng với chính mình.',
-  'Không có cảm xúc nào là cảm xúc sai.',
-  'Cứ gieo xuống, rồi bạn sẽ thấy mình lớn lên cùng cái cây.'
-];
-
-// Helper to determine stage from seed count
-export function calculatePlantStage(seedCount: number): number {
-  if (seedCount <= 2) return 1;
-  if (seedCount <= 6) return 2;
-  if (seedCount <= 12) return 3;
-  if (seedCount <= 20) return 4;
-  return 5;
-}
-
-export function getStageTitle(stage: number): { emoji: string; title: string; desc: string } {
-  switch (stage) {
-    case 1:
-      return {
-        emoji: '🌱',
-        title: 'Hạt giống / Mầm nhỏ',
-        desc: 'Mầm cây đang lắng nghe những nét vẽ đầu tiên của bạn.'
-      };
-    case 2:
-      return {
-        emoji: '🌿',
-        title: 'Cây non',
-        desc: 'Những chiếc lá non đầu tiên đang vươn lên đón ánh sáng.'
-      };
-    case 3:
-      return {
-        emoji: '🌳',
-        title: 'Cây lớn hơn',
-        desc: 'Tán cây sum suê vững chãi theo từng ngày bạn đi qua.'
-      };
-    case 4:
-      return {
-        emoji: '🌳🌸',
-        title: 'Cây trưởng thành',
-        desc: 'Hoa và trái ngọt bắt đầu nở rộ từ những trải nghiệm chân thật.'
-      };
-    case 5:
-    default:
-      return {
-        emoji: '🌳✨',
-        title: 'Cây đặc biệt / Đầy sức sống',
-        desc: 'Cái cây lấp lánh đốm sáng, mang theo trọn vẹn hành trình cảm xúc của bạn.'
-      };
-  }
-}
+// Legacy key for migration
+const getLegacyPlantStorageKey = (userId?: string) =>
+  userId ? `teen_plant_${userId}_seeds` : 'teen_plant_guest_seeds';
 
 export const EmotionPlantView: React.FC = () => {
   const { user, token } = useAuth();
-  const [seeds, setSeeds] = useState<EmotionSeedItem[]>([]);
-  const [isLoaded, setIsLoaded] = useState<boolean>(false);
+  const todayStr = useMemo(() => getTodayDateString(), []);
 
-  // Social Plant Care: Messages from friends & permissions
-  const [messages, setMessages] = useState<PlantCareMessage[]>([]);
-  const [permissions, setPermissions] = useState<PlantPermissions>({
-    allowFriendsToCare: true,
-    allowEncouragementMessages: true
-  });
-  const [isMessagesModalOpen, setIsMessagesModalOpen] = useState<boolean>(false);
+  // Core state
+  const [seeds, setSeeds] = useState<EmotionSeedItem[]>([]);
+  const [currentWeather, setCurrentWeather] = useState<PlantWeatherType>(() =>
+    getBaseWeatherForDate(todayStr)
+  );
+  const [todayEmotion, setTodayEmotion] = useState<PlantEmotionType | undefined>(undefined);
+  const [todayFertilizer, setTodayFertilizer] = useState<{
+    date: string;
+    requiredKg: number;
+    currentKg: number;
+    isCompleted: boolean;
+  }>(() => ({
+    date: todayStr,
+    requiredKg: getRequiredFertilizerForDate(todayStr),
+    currentKg: 0,
+    isCompleted: false
+  }));
+  const [dailyLogs, setDailyLogs] = useState<Record<string, DailyPlantLog>>({});
+  const [unlockedDecorations, setUnlockedDecorations] = useState<GardenDecorationItem[]>([]);
+  const [rewards, setRewards] = useState<PlantRewardItem[]>([]);
+  const [hasPendingGift, setHasPendingGift] = useState<boolean>(false);
+  const [lastVisitedDate, setLastVisitedDate] = useState<string>(todayStr);
+
+  // Plant Speech Bubble
+  const [plantSpeech, setPlantSpeech] = useState<string>('Chào buổi sáng 🌱 Chúc cậu ngày mới an lành!');
 
   // Modals & animations
   const [isCanvasOpen, setIsCanvasOpen] = useState<boolean>(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
+  const [isDecorationsOpen, setIsDecorationsOpen] = useState<boolean>(false);
+  const [isGiftModalOpen, setIsGiftModalOpen] = useState<boolean>(false);
+  const [activeGift, setActiveGift] = useState<PlantRewardItem | null>(null);
   const [isSowingAnim, setIsSowingAnim] = useState<boolean>(false);
   const [isBoxOpen, setIsBoxOpen] = useState<boolean>(false);
-  const [reassuranceText, setReassuranceText] = useState<string>('');
-  const [showToast, setShowToast] = useState<boolean>(false);
   const [recentEffect, setRecentEffect] = useState<SeedGrowthEffect | null>(null);
 
-  // Load seeds on mount (localStorage first, then sync with server if logged in)
-  useEffect(() => {
+  // Load state helper
+  const loadState = useCallback(() => {
     try {
-      const local = localStorage.getItem(STORAGE_KEY);
+      const storageKey = getPlantStorageKey(user?.id);
+      const local = localStorage.getItem(storageKey);
+
       if (local) {
-        const parsed = JSON.parse(local);
-        if (Array.isArray(parsed)) {
-          setSeeds(parsed);
+        const parsed: FullPlantState = JSON.parse(local);
+        if (parsed && typeof parsed === 'object') {
+          if (Array.isArray(parsed.seeds)) setSeeds(parsed.seeds);
+          if (parsed.currentWeather) setCurrentWeather(parsed.currentWeather);
+          if (parsed.todayEmotion) setTodayEmotion(parsed.todayEmotion);
+          if (parsed.todayFertilizer && parsed.todayFertilizer.date === todayStr) {
+            setTodayFertilizer(parsed.todayFertilizer);
+          } else {
+            // New day fertilizer target
+            setTodayFertilizer({
+              date: todayStr,
+              requiredKg: getRequiredFertilizerForDate(todayStr),
+              currentKg: 0,
+              isCompleted: false
+            });
+          }
+          if (parsed.dailyLogs) setDailyLogs(parsed.dailyLogs);
+          if (Array.isArray(parsed.unlockedDecorations)) setUnlockedDecorations(parsed.unlockedDecorations);
+          if (Array.isArray(parsed.rewards)) setRewards(parsed.rewards);
+          if (typeof parsed.pendingGift === 'boolean') setHasPendingGift(parsed.pendingGift);
+          if (parsed.lastVisitedDate) setLastVisitedDate(parsed.lastVisitedDate);
+
+          // Plant greeting based on visit
+          const greeting = getDailyPlantGreeting(false, parsed.lastVisitedDate);
+          setPlantSpeech(greeting);
+          return;
         }
       }
+
+      // Check legacy seeds key for migration
+      const legacyKey = getLegacyPlantStorageKey(user?.id);
+      const legacyLocal = localStorage.getItem(legacyKey);
+      if (legacyLocal) {
+        const legacySeeds = JSON.parse(legacyLocal);
+        if (Array.isArray(legacySeeds)) {
+          setSeeds(legacySeeds);
+        }
+      }
+
+      // Default greeting for new visit
+      setPlantSpeech(getDailyPlantGreeting(true));
     } catch (e) {
-      console.warn('Could not read local seeds:', e);
+      console.warn('Could not read local plant state:', e);
     }
-    setIsLoaded(true);
-  }, []);
+  }, [user?.id, todayStr]);
+
+  useEffect(() => {
+    loadState();
+  }, [loadState]);
+
+  // Account switch listener
+  useEffect(() => {
+    const handleAccountChange = () => {
+      loadState();
+    };
+    window.addEventListener('teen_account_changed', handleAccountChange);
+    return () => window.removeEventListener('teen_account_changed', handleAccountChange);
+  }, [loadState]);
 
   // Fetch from server if logged in
   useEffect(() => {
-    if (!token) return;
+    if (!token || !user?.id) return;
+    let isMounted = true;
 
     const fetchServerData = async () => {
       try {
         const res = await fetch('/api/emotion-plant/my', {
           headers: { Authorization: `Bearer ${token}` }
         });
-        if (res.ok) {
+        if (res.ok && isMounted) {
           const data = await res.json();
-          if (Array.isArray(data.seeds) && data.seeds.length > 0) {
-            setSeeds(data.seeds);
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(data.seeds));
-          } else {
-            // If server has no seeds yet, but local does, sync local to server
-            const local = localStorage.getItem(STORAGE_KEY);
-            if (local) {
-              const parsed = JSON.parse(local);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                await fetch('/api/emotion-plant/sync', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                  },
-                  body: JSON.stringify({ seeds: parsed })
-                });
-              }
+          if (data.plant && typeof data.plant === 'object') {
+            const p = data.plant;
+            if (Array.isArray(p.seeds)) setSeeds(p.seeds);
+            if (p.currentWeather) setCurrentWeather(p.currentWeather);
+            if (p.todayEmotion) setTodayEmotion(p.todayEmotion);
+            if (p.todayFertilizer && p.todayFertilizer.date === todayStr) {
+              setTodayFertilizer(p.todayFertilizer);
             }
-          }
-
-          // Parse friend messages and permissions
-          const rawMessages = Array.isArray(data.messages) ? data.messages : (data.plant && Array.isArray(data.plant.messages)) ? data.plant.messages : null;
-          if (rawMessages) {
-            setMessages(
-              rawMessages.map((m: any) => ({
-                id: m.id,
-                plantOwnerUserId: m.plant_owner_user_id,
-                senderUserId: m.sender_user_id,
-                senderNickname: m.sender_nickname,
-                senderAvatar: m.sender_avatar,
-                senderFriendId: m.sender_friend_id,
-                message: m.message,
-                visualEffect: m.visual_effect,
-                createdAt: m.created_at,
-                readAt: m.read_at
-              }))
-            );
-          }
-
-          const rawPermissions = data.permissions || data.plant?.permissions;
-          if (rawPermissions) {
-            setPermissions({
-              allowFriendsToCare: rawPermissions.allow_friends_to_care ?? true,
-              allowEncouragementMessages: rawPermissions.allow_encouragement_messages ?? true
-            });
+            if (p.dailyLogs) setDailyLogs(p.dailyLogs);
+            if (Array.isArray(p.unlockedDecorations)) setUnlockedDecorations(p.unlockedDecorations);
+            if (Array.isArray(p.rewards)) setRewards(p.rewards);
+            if (typeof p.pendingGift === 'boolean') setHasPendingGift(p.pendingGift);
+          } else if (Array.isArray(data.seeds) && data.seeds.length > 0) {
+            setSeeds(data.seeds);
           }
         }
       } catch (err) {
@@ -181,56 +193,32 @@ export const EmotionPlantView: React.FC = () => {
     };
 
     fetchServerData();
-  }, [token]);
+    return () => {
+      isMounted = false;
+    };
+  }, [token, user?.id, todayStr]);
 
-  // Mark message as read
-  const handleMarkMessageRead = async (msgId: string) => {
-    setMessages((prev) =>
-      prev.map((m) => (m.id === msgId ? { ...m, readAt: new Date().toISOString() } : m))
-    );
-    if (token) {
-      try {
-        await fetch(`/api/plant/my/messages/${msgId}/read`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` }
-        });
-      } catch (err) {
-        console.warn('Mark message read error:', err);
-      }
-    }
-  };
+  // Save current state to local storage & server
+  const persistFullState = useCallback(
+    async (override?: Partial<FullPlantState>) => {
+      const currentState: FullPlantState = {
+        seeds,
+        currentWeather,
+        todayEmotion,
+        todayFertilizer,
+        dailyLogs,
+        unlockedDecorations,
+        rewards,
+        pendingGift: hasPendingGift,
+        lastVisitedDate: todayStr,
+        ...override
+      };
 
-  // Update privacy permissions
-  const handleUpdatePermissions = async (newPerms: Partial<PlantPermissions>) => {
-    const updated = { ...permissions, ...newPerms };
-    setPermissions(updated);
-    if (token) {
+      const storageKey = getPlantStorageKey(user?.id);
       try {
-        await fetch('/api/plant/my/permissions', {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            allow_friends_to_care: updated.allowFriendsToCare,
-            allow_encouragement_messages: updated.allowEncouragementMessages
-          })
-        });
-      } catch (err) {
-        console.warn('Update plant permissions error:', err);
-      }
-    }
-  };
-
-  // Persist seeds helper
-  const persistSeeds = useCallback(
-    async (updatedSeeds: EmotionSeedItem[]) => {
-      setSeeds(updatedSeeds);
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedSeeds));
+        localStorage.setItem(storageKey, JSON.stringify(currentState));
       } catch (e) {
-        console.warn('Failed to save to localStorage:', e);
+        console.warn('Failed to save state to localStorage:', e);
       }
 
       if (token) {
@@ -241,273 +229,539 @@ export const EmotionPlantView: React.FC = () => {
               'Content-Type': 'application/json',
               Authorization: `Bearer ${token}`
             },
-            body: JSON.stringify({ seeds: updatedSeeds })
+            body: JSON.stringify({
+              seeds: currentState.seeds,
+              plantState: currentState
+            })
           });
         } catch (e) {
-          console.warn('Failed to sync seeds with server:', e);
+          console.warn('Failed to sync plant with server:', e);
         }
       }
     },
-    [token]
+    [
+      seeds,
+      currentWeather,
+      todayEmotion,
+      todayFertilizer,
+      dailyLogs,
+      unlockedDecorations,
+      rewards,
+      hasPendingGift,
+      todayStr,
+      token,
+      user?.id
+    ]
   );
 
-  // Handle sowing new emotion seed
+  // Handle Emotion selection
+  const handleSelectEmotion = (emotion: PlantEmotionType) => {
+    setTodayEmotion(emotion);
+    const emotionOpt = PLANT_EMOTIONS.find((e) => e.id === emotion);
+    if (emotionOpt) {
+      setCurrentWeather(emotionOpt.weatherInfluence);
+    }
+
+    // Plant speaks a warm reaction
+    const plantReactions: Record<PlantEmotionType, string> = {
+      happy: 'Trời nắng ấm chan hòa rồi! Thấy cậu vui tớ cũng tươi tắn theo 🌱',
+      fine: 'Nắng nhẹ dịu êm ghê. Cứ thong thả từng bước nhé 🌱',
+      neutral: 'Mây lững lờ bình yên quá. Một ngày êm đềm như thế này thật quý.',
+      sad: 'Cơn mưa tưới mát cho đất rồi. Buồn thì cứ thả lỏng, tớ vẫn ở đây che mát cho cậu.',
+      stressed: 'Áp lực quá thì để xuống đây một chút nhé. Mưa rơi sẽ gột rửa bớt mệt mỏi.',
+      anxious: 'Đừng lo nhé, có tớ ở bên đây rồi. Cậu luôn an toàn ở góc nhỏ này.',
+      angry: 'Gió mát rượi thổi qua rồi đó. Thở ra một hơi thật dài nhé 🌱',
+      lonely: 'Đêm thanh bình, cậu không hề một mình đâu. Tớ luôn đợi cậu ở đây.',
+      unknown: 'Không sao cả, không cần gọi tên đâu. Cứ để mọi thứ tự nhiên như cầu vồng nhé 🌈'
+    };
+
+    setPlantSpeech(plantReactions[emotion] || 'Tớ nghe rồi nha 🌱');
+
+    // Update daily log
+    const updatedLogs = {
+      ...dailyLogs,
+      [todayStr]: {
+        date: todayStr,
+        weather: emotionOpt?.weatherInfluence || currentWeather,
+        emotion,
+        sowedSeed: dailyLogs[todayStr]?.sowedSeed || false,
+        fertilizerKg: todayFertilizer.currentKg,
+        fertilizerRequiredKg: todayFertilizer.requiredKg,
+        fertilizerDone: todayFertilizer.isCompleted
+      }
+    };
+    setDailyLogs(updatedLogs);
+
+    persistFullState({
+      todayEmotion: emotion,
+      currentWeather: emotionOpt?.weatherInfluence || currentWeather,
+      dailyLogs: updatedLogs
+    });
+  };
+
+  // Handle Sowing new Emotion Paper Seed
   const handleSow = (drawingDataUrl: string, effect: SeedGrowthEffect) => {
-    const stageAtTime = calculatePlantStage(seeds.length);
+    const stageAtTime = calculatePlantStage(
+      seeds.length,
+      Object.values(dailyLogs).filter((l) => l.fertilizerDone).length
+    );
 
     const newSeed: EmotionSeedItem = {
       id: 'seed_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
       createdAt: new Date().toISOString(),
       drawingDataUrl,
       growthEffect: effect,
-      stageAtSowing: stageAtTime
+      stageAtSowing: stageAtTime,
+      emotion: todayEmotion,
+      weather: currentWeather
     };
 
-    const updated = [...seeds, newSeed];
+    const updatedSeeds = [...seeds, newSeed];
+    setSeeds(updatedSeeds);
 
-    // Trigger box opening & plant rustle animation
+    // Box opening and plant animation
     setIsBoxOpen(true);
     setIsSowingAnim(true);
     setRecentEffect(effect);
 
-    // Pick random warm reassurance message
-    const msg = REASSURANCE_MESSAGES[Math.floor(Math.random() * REASSURANCE_MESSAGES.length)];
-    setReassuranceText(msg);
-    setShowToast(true);
+    // Plant speaks! Short, natural, warm (Requirement)
+    const reply = getRandomSowingMessage();
+    setPlantSpeech(reply);
 
-    // Save
-    persistSeeds(updated);
+    // Update daily log
+    const updatedLogs = {
+      ...dailyLogs,
+      [todayStr]: {
+        date: todayStr,
+        weather: currentWeather,
+        emotion: todayEmotion,
+        sowedSeed: true,
+        fertilizerKg: todayFertilizer.currentKg,
+        fertilizerRequiredKg: todayFertilizer.requiredKg,
+        fertilizerDone: todayFertilizer.isCompleted
+      }
+    };
+    setDailyLogs(updatedLogs);
 
-    // Close box after 1.2s
+    // Chance for surprise gift drop (milestone or random)
+    let pendingGiftTriggered = hasPendingGift;
+    if (updatedSeeds.length % 3 === 0 || !hasPendingGift) {
+      pendingGiftTriggered = true;
+      setHasPendingGift(true);
+    }
+
+    persistFullState({
+      seeds: updatedSeeds,
+      dailyLogs: updatedLogs,
+      pendingGift: pendingGiftTriggered
+    });
+
     setTimeout(() => {
       setIsBoxOpen(false);
       setIsSowingAnim(false);
     }, 1200);
-
-    // Hide toast after 4s
-    setTimeout(() => {
-      setShowToast(false);
-    }, 4500);
   };
 
-  // Delete a seed from history
+  // Handle Fertilizer Update
+  const handleFertilizerUpdate = (newKg: number, delta: number) => {
+    const isCompleted = Math.abs(newKg - todayFertilizer.requiredKg) < 0.01;
+
+    const nextFertilizer = {
+      ...todayFertilizer,
+      currentKg: newKg,
+      isCompleted
+    };
+    setTodayFertilizer(nextFertilizer);
+
+    // Plant reacts to fertilizer amount
+    if (newKg > todayFertilizer.requiredKg + 0.01) {
+      setPlantSpeech('Ơ, hơi nhiều rồi =)) Cậu bấm "Lấy bớt" nhé!');
+    } else if (newKg < todayFertilizer.requiredKg - 0.01) {
+      setPlantSpeech('Tớ vẫn cần thêm một chút dinh dưỡng nữa 🌱');
+    }
+
+    // Update log
+    const updatedLogs = {
+      ...dailyLogs,
+      [todayStr]: {
+        date: todayStr,
+        weather: currentWeather,
+        emotion: todayEmotion,
+        sowedSeed: dailyLogs[todayStr]?.sowedSeed || false,
+        fertilizerKg: newKg,
+        fertilizerRequiredKg: todayFertilizer.requiredKg,
+        fertilizerDone: isCompleted
+      }
+    };
+    setDailyLogs(updatedLogs);
+
+    persistFullState({
+      todayFertilizer: nextFertilizer,
+      dailyLogs: updatedLogs
+    });
+  };
+
+  // Handle Fertilizer Hit Exact Target
+  const handleFertilizerCompleted = () => {
+    // Shake plant happily and speak
+    setIsSowingAnim(true);
+    setTimeout(() => setIsSowingAnim(false), 1200);
+
+    const happyMessages = [
+      'Vừa đủ luôn! Cảm ơn cậu nha 🌱',
+      'Chuẩn rồi! Tớ khỏe hơn một chút rồi.',
+      'Đủ dinh dưỡng rồi nè! Mát lành ghê.',
+      'Đất ấm và mềm rồi, tớ vươn cao thêm xíu đây!'
+    ];
+    setPlantSpeech(happyMessages[Math.floor(Math.random() * happyMessages.length)]);
+
+    // Trigger surprise gift if not already present
+    setHasPendingGift(true);
+
+    persistFullState({
+      pendingGift: true
+    });
+  };
+
+  // Open Surprise Gift
+  const handleOpenGift = () => {
+    const unlockedIds = unlockedDecorations.map((d) => d.id);
+    const reward = pickRandomReward(unlockedIds);
+    setActiveGift(reward);
+    setIsGiftModalOpen(true);
+    setHasPendingGift(false);
+
+    const updatedRewards = [reward, ...rewards];
+    setRewards(updatedRewards);
+
+    let updatedDecorations = unlockedDecorations;
+    if (reward.decoration) {
+      // Add to decorations
+      updatedDecorations = [reward.decoration, ...unlockedDecorations];
+      setUnlockedDecorations(updatedDecorations);
+    }
+
+    persistFullState({
+      pendingGift: false,
+      rewards: updatedRewards,
+      unlockedDecorations: updatedDecorations
+    });
+  };
+
+  // Delete seed
   const handleDeleteSeed = (seedId: string) => {
     const updated = seeds.filter((s) => s.id !== seedId);
-    persistSeeds(updated);
+    setSeeds(updated);
+    persistFullState({ seeds: updated });
   };
 
-  const currentStage = calculatePlantStage(seeds.length);
-  const stageInfo = getStageTitle(currentStage);
+  // Current stage calculation
+  const completedFertilizerDays = Object.values(dailyLogs).filter(
+    (l) => l.fertilizerDone
+  ).length;
+  const currentStage = calculatePlantStage(seeds.length, completedFertilizerDays);
+  const stageDetails = getStageDetails(currentStage);
+
+  // Weather visuals
+  const weatherConfig = WEATHER_CONFIG[currentWeather] || WEATHER_CONFIG.sunny;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#FAF8F5] via-[#F6F3EE] to-[#FAF8F5] text-slate-800 pb-24 select-none">
-      {/* ════════════════ TOP HEADER ════════════════ */}
-      <header className="pt-8 sm:pt-12 pb-4 px-4 sm:px-6 max-w-4xl mx-auto text-center space-y-3">
-        {/* Safe Badge */}
-        <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-emerald-50 border border-emerald-200/80 text-xs font-bold text-emerald-800 shadow-2xs">
-          <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-          <span>Không gian gieo hạt riêng tư • Không phán xét • Không điểm số</span>
+    <div
+      className={`min-h-screen bg-gradient-to-b ${weatherConfig.skyClass} text-slate-800 pb-24 select-none transition-colors duration-700`}
+    >
+      {/* ════════════════ TOP WEATHER & GARDEN BAR ════════════════ */}
+      <div className="border-b border-amber-200/50 bg-white/60 backdrop-blur-xs py-2 px-4 sm:px-6">
+        <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-3 text-xs">
+          {/* Weather status */}
+          <div className="flex items-center gap-2">
+            <span className="text-xl">{weatherConfig.emoji}</span>
+            <div>
+              <span className="font-extrabold text-slate-900">
+                Thời tiết hôm nay: {weatherConfig.name}
+              </span>
+              <span className="text-slate-500 hidden sm:inline ml-1.5 font-medium">
+                • {weatherConfig.description}
+              </span>
+            </div>
+          </div>
+
+          {/* Quick Stats & Action Pills */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsDecorationsOpen(true)}
+              className="px-3 py-1.5 rounded-full bg-amber-100/90 hover:bg-amber-200 text-amber-900 font-bold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+              title="Xem bộ sưu tập trang trí"
+            >
+              <span>🏡 Góc vườn</span>
+              <span className="bg-amber-200/80 px-1.5 py-0.2 rounded-full text-[10px]">
+                {unlockedDecorations.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setIsHistoryOpen(true)}
+              className="px-3 py-1.5 rounded-full bg-white hover:bg-amber-50 text-slate-700 border border-slate-200 font-bold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+            >
+              <Inbox className="w-3.5 h-3.5 text-amber-700" />
+              <span>Đã gieo ({seeds.length})</span>
+            </button>
+
+            {user && (
+              <span className="hidden md:inline-flex items-center gap-1 text-[11px] text-teal-800 bg-teal-50 px-2.5 py-1 rounded-full border border-teal-200/60 font-semibold">
+                <CloudCheck className="w-3.5 h-3.5 text-teal-600" />
+                <span>Đồng bộ tài khoản</span>
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ════════════════ TITLE & GENTLE INTRO ════════════════ */}
+      <header className="pt-6 sm:pt-10 pb-4 px-4 sm:px-6 max-w-4xl mx-auto text-center space-y-2.5">
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100/80 border border-emerald-300/80 text-[11px] font-extrabold text-emerald-900 shadow-2xs">
+          <Sparkles className="w-3.5 h-3.5 text-emerald-700" />
+          <span>Góc chăm cây hằng ngày • Thư giãn & Giải tỏa tâm trí</span>
         </div>
 
-        <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-slate-900 tracking-tight">
+        <h1 className="text-2xl sm:text-4xl font-black text-slate-900 tracking-tight">
           🌱 Hộp Cây Cảm Xúc
         </h1>
 
-        <div className="space-y-1 max-w-xl mx-auto">
-          <p className="text-base sm:text-lg font-bold text-emerald-800">
-            Hôm nay bạn cảm thấy thế nào?
-          </p>
-          <p className="text-xs sm:text-sm text-slate-600 font-medium">
-            Không cần gọi tên cảm xúc. Cứ vẽ nó. Bất kỳ nét vẽ nào cũng được đón nhận.
-          </p>
-        </div>
-
-        {/* Action pills: History button & Messages button */}
-        <div className="pt-2 flex flex-wrap items-center justify-center gap-2.5">
-          <button
-            onClick={() => setIsHistoryOpen(true)}
-            className="px-4 py-2 rounded-2xl bg-white hover:bg-amber-50 border border-amber-200/90 text-xs sm:text-sm font-bold text-amber-900 shadow-2xs hover:shadow-xs transition-all flex items-center gap-2 cursor-pointer"
-          >
-            <Inbox className="w-4 h-4 text-amber-700" />
-            <span>📦 Những điều đã gieo ({seeds.length})</span>
-          </button>
-
-          <button
-            onClick={() => setIsMessagesModalOpen(true)}
-            className="px-4 py-2 rounded-2xl bg-white hover:bg-rose-50 border border-rose-200/90 text-xs sm:text-sm font-bold text-rose-900 shadow-2xs hover:shadow-xs transition-all flex items-center gap-2 cursor-pointer relative"
-          >
-            <span>💌 Lời nhắn bạn bè ({messages.length})</span>
-            {messages.filter((m) => !m.readAt).length > 0 && (
-              <span className="inline-flex items-center justify-center px-2 py-0.5 text-[10px] font-black text-white bg-rose-500 rounded-full shadow-xs animate-pulse">
-                {messages.filter((m) => !m.readAt).length} mới
-              </span>
-            )}
-          </button>
-        </div>
+        <p className="text-xs sm:text-sm text-slate-600 font-medium max-w-md mx-auto leading-relaxed">
+          Ghé thăm cây mỗi ngày, đặt một chút cảm xúc xuống đất mềm và rời đi với tâm trạng nhẹ hơn.
+        </p>
       </header>
 
-      {/* ════════════════ MAIN STAGE: PLANT & BOX ════════════════ */}
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 space-y-8">
-        {/* Toast / Notification after sowing */}
-        <AnimatePresence>
-          {showToast && (
-            <motion.div
-              initial={{ opacity: 0, y: -15, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -15, scale: 0.95 }}
-              className="max-w-md mx-auto p-3 sm:p-4 rounded-2xl bg-emerald-700 text-white shadow-lg flex items-center gap-3 text-xs sm:text-sm font-semibold"
-            >
-              <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center text-lg shrink-0">
-                🌱
-              </div>
-              <p className="flex-1 leading-snug">{reassuranceText}</p>
-            </motion.div>
-          )}
-        </AnimatePresence>
+      {/* ════════════════ MAIN INTERACTIVE PLAYGROUND ════════════════ */}
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 space-y-6">
+        {/* Emotion Selector Bar */}
+        <EmotionBar
+          selectedEmotion={todayEmotion}
+          onSelectEmotion={handleSelectEmotion}
+        />
 
-        {/* Stage Card with Potted Plant & Emotion Box */}
-        <div className="relative bg-gradient-to-b from-white to-[#FBF9F5] rounded-3xl p-6 sm:p-8 border border-amber-100 shadow-sm overflow-hidden flex flex-col items-center">
-          {/* Stage pill at top of card */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 w-full border-b border-amber-100/80 pb-4 mb-2">
-            <div className="flex items-center gap-2.5">
-              <span className="text-xl sm:text-2xl">{stageInfo.emoji}</span>
-              <div>
-                <div className="text-xs sm:text-sm font-black text-slate-800">
-                  Giai đoạn {currentStage}: {stageInfo.title}
+        {/* Primary Play Screen: Split into Garden / Plant Stage and Daily Fertilizer */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Left / Main Column: Plant Canvas & Speech */}
+          <div className="lg:col-span-7 bg-white/85 backdrop-blur-xs rounded-3xl p-5 sm:p-7 border border-amber-100/90 shadow-sm flex flex-col items-center relative overflow-hidden">
+            {/* Stage Indicator Pill */}
+            <div className="w-full flex items-center justify-between border-b border-amber-100/80 pb-3 mb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">{stageDetails.emoji}</span>
+                <div>
+                  <h3 className="text-xs sm:text-sm font-black text-slate-800">
+                    Giai đoạn {currentStage}: {stageDetails.title}
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    {stageDetails.desc}
+                  </p>
                 </div>
-                <div className="text-[11px] sm:text-xs text-slate-500 font-medium">
-                  {stageInfo.desc}
-                </div>
+              </div>
+
+              <div className="text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                {seeds.length} hạt đã gieo
               </div>
             </div>
 
-            {/* Seed count progress pill */}
-            <div className="px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-800 shrink-0">
-              {seeds.length === 0
-                ? '0 hạt giống • Hãy bắt đầu mầm đầu tiên'
-                : `${seeds.length} hạt giống đã gieo`}
+            {/* Plant Speech Bubble (Floating above plant) */}
+            <div className="w-full max-w-sm mt-2 mb-1">
+              <motion.div
+                key={plantSpeech}
+                initial={{ opacity: 0, y: 6, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                className="relative bg-gradient-to-r from-amber-50 via-white to-emerald-50 rounded-2xl p-3 sm:p-3.5 border border-amber-200/90 shadow-2xs text-center"
+              >
+                <div className="flex items-center justify-center gap-1.5 text-xs sm:text-sm font-bold text-slate-800">
+                  <span className="text-sm">💬</span>
+                  <span>{plantSpeech}</span>
+                </div>
+                {/* Speech triangle */}
+                <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[8px] border-t-amber-100" />
+              </motion.div>
+            </div>
+
+            {/* Plant Canvas SVG */}
+            <div className="w-full relative flex flex-col items-center justify-center my-2">
+              <PlantCanvasSvg
+                seedCount={seeds.length}
+                stage={currentStage}
+                weather={currentWeather}
+                decorations={unlockedDecorations}
+                hasPendingGift={hasPendingGift}
+                isSowingAnim={isSowingAnim}
+                recentlyAddedEffect={recentEffect}
+                onPlantClick={() => {
+                  setIsSowingAnim(true);
+                  const gentleQuotes = [
+                    'Cậu ở đây, tớ rất vui 🌱',
+                    'Lá cây rung rinh chào cậu nè!',
+                    'Hôm nay làm được gì cũng đáng tự hào.',
+                    'Thở sâu một nhịp nhé bạn thương.'
+                  ];
+                  setPlantSpeech(gentleQuotes[Math.floor(Math.random() * gentleQuotes.length)]);
+                  setTimeout(() => setIsSowingAnim(false), 800);
+                }}
+                onOpenGift={handleOpenGift}
+              />
+
+              {/* Seed box below */}
+              <div className="mt-3">
+                <SeedBoxSvg
+                  isOpen={isBoxOpen}
+                  seedCount={seeds.length}
+                  isReceivingSeed={isSowingAnim}
+                  onClick={() => setIsHistoryOpen(true)}
+                />
+              </div>
+            </div>
+
+            {/* Primary Action Button: "✏️ Vẽ cảm xúc" */}
+            <div className="w-full max-w-sm mt-4 flex flex-col items-center gap-2">
+              <button
+                onClick={() => setIsCanvasOpen(true)}
+                className="w-full py-3.5 sm:py-4 px-6 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black text-base shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2.5 cursor-pointer active:scale-[0.99]"
+              >
+                <PenTool className="w-5 h-5" />
+                <span>✏️ Vẽ cảm xúc hôm nay</span>
+              </button>
+              <p className="text-[11px] text-center text-slate-500 font-medium">
+                Vẽ tự do mọi nét vẽ • Gấp lại thành hạt mầm gieo vào chậu
+              </p>
             </div>
           </div>
 
-          {/* Plant Canvas Area */}
-          <div className="w-full relative flex flex-col items-center justify-center my-2">
-            {/* Initial Empty State Banner if 0 seeds */}
-            {seeds.length === 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: 5 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="text-center mb-1 max-w-xs px-3 py-2 rounded-2xl bg-amber-50/80 border border-amber-200/60 text-xs text-amber-900 font-medium leading-relaxed"
-              >
-                <p>🌱 Cây này chưa có câu chuyện nào cả.</p>
-                <p className="text-[11px] text-amber-700/80">Bạn có thể bắt đầu bằng một nét vẽ.</p>
-              </motion.div>
-            )}
-
-            {/* Plant SVG */}
-            <PlantCanvasSvg
-              seedCount={seeds.length}
-              stage={currentStage}
-              isSowingAnim={isSowingAnim}
-              recentlyAddedEffect={recentEffect}
-              encouragementMessages={messages}
-              onPlantClick={() => {
-                // Friendly interaction
-                setIsSowingAnim(true);
-                setTimeout(() => setIsSowingAnim(false), 800);
-              }}
+          {/* Right Column: Daily Fertilizer & Garden Care */}
+          <div className="lg:col-span-5 space-y-4">
+            {/* Daily Fertilizer Section */}
+            <FertilizerSection
+              requiredKg={todayFertilizer.requiredKg}
+              currentKg={todayFertilizer.currentKg}
+              isCompleted={todayFertilizer.isCompleted}
+              onUpdateKg={handleFertilizerUpdate}
+              onFertilizerCompleted={handleFertilizerCompleted}
             />
 
-            {/* Emotion Seed Box sitting beside or beneath the plant */}
-            <div className="mt-4 sm:mt-6">
-              <SeedBoxSvg
-                isOpen={isBoxOpen}
-                seedCount={seeds.length}
-                isReceivingSeed={isSowingAnim}
-                onClick={() => setIsHistoryOpen(true)}
-              />
-            </div>
-          </div>
+            {/* Daily Care Checklist */}
+            <div className="bg-white/80 backdrop-blur-xs rounded-3xl p-5 border border-amber-100/90 shadow-xs space-y-3">
+              <h4 className="text-xs sm:text-sm font-black text-slate-800 flex items-center gap-1.5">
+                <span>🗓️</span>
+                <span>Nhật ký chăm sóc hôm nay</span>
+              </h4>
 
-          {/* Primary Action Button: "✏️ Vẽ cảm xúc" */}
-          <div className="w-full max-w-sm mt-6 flex flex-col items-center gap-2">
-            <button
-              onClick={() => setIsCanvasOpen(true)}
-              className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black text-base sm:text-lg shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2.5 cursor-pointer active:scale-[0.99]"
-            >
-              <PenTool className="w-5 h-5" />
-              <span>✏️ Vẽ cảm xúc</span>
-            </button>
-            <p className="text-[11px] sm:text-xs text-center text-slate-500 font-medium">
-              Vẽ bất cứ điều gì bạn muốn • Không bắt buộc phải giải thích
-            </p>
+              <div className="space-y-2 text-xs">
+                {/* Step 1: Emotion */}
+                <div className="flex items-center justify-between p-2.5 rounded-2xl bg-slate-50/90 border border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">💭</span>
+                    <span className="font-semibold text-slate-700">Chọn cảm xúc hôm nay</span>
+                  </div>
+                  {todayEmotion ? (
+                    <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60 text-[10px]">
+                      Đã chọn
+                    </span>
+                  ) : (
+                    <span className="text-slate-400 font-medium text-[10px]">Chưa chọn</span>
+                  )}
+                </div>
+
+                {/* Step 2: Drawing Seed */}
+                <div className="flex items-center justify-between p-2.5 rounded-2xl bg-slate-50/90 border border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">🌱</span>
+                    <span className="font-semibold text-slate-700">Gieo hạt cảm xúc</span>
+                  </div>
+                  {dailyLogs[todayStr]?.sowedSeed ? (
+                    <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60 text-[10px]">
+                      Đã gieo
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => setIsCanvasOpen(true)}
+                      className="text-emerald-800 font-bold hover:underline text-[10px] cursor-pointer"
+                    >
+                      + Vẽ ngay
+                    </button>
+                  )}
+                </div>
+
+                {/* Step 3: Fertilizer */}
+                <div className="flex items-center justify-between p-2.5 rounded-2xl bg-slate-50/90 border border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">🪣</span>
+                    <span className="font-semibold text-slate-700">Bón đủ phân hôm nay</span>
+                  </div>
+                  {todayFertilizer.isCompleted ? (
+                    <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60 text-[10px]">
+                      Đã hoàn thành ✨
+                    </span>
+                  ) : (
+                    <span className="text-amber-800 font-bold text-[10px]">
+                      {todayFertilizer.currentKg}/{todayFertilizer.requiredKg} kg
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="text-[11px] text-slate-500 pt-1 leading-relaxed">
+                Hoàn thành chăm sóc mỗi ngày sẽ giúp cây lớn nhanh hơn và mở khóa các vật phẩm trang trí ngẫu nhiên!
+              </div>
+            </div>
+
+            {/* Growth Stages Preview Card */}
+            <div className="bg-white/80 backdrop-blur-xs rounded-3xl p-5 border border-amber-100/90 shadow-xs space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs sm:text-sm font-black text-slate-800 flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-emerald-600" />
+                  <span>Cấp bậc phát triển cây (6 giai đoạn)</span>
+                </h4>
+              </div>
+
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 text-center">
+                {[
+                  { s: 1, em: '🌰', name: 'Hạt giống' },
+                  { s: 2, em: '🌱', name: 'Mầm nhỏ' },
+                  { s: 3, em: '🌿', name: 'Cây non' },
+                  { s: 4, em: '🪴', name: 'Cây lớn' },
+                  { s: 5, em: '🌳', name: 'Trưởng thành' },
+                  { s: 6, em: '✨', name: 'Kỳ diệu' }
+                ].map((item) => {
+                  const isCurrent = currentStage === item.s;
+                  const isPast = currentStage > item.s;
+                  return (
+                    <div
+                      key={item.s}
+                      className={`p-2 rounded-xl border text-center transition-all ${
+                        isCurrent
+                          ? 'bg-emerald-50 border-emerald-400 ring-2 ring-emerald-400/40 shadow-2xs font-bold'
+                          : isPast
+                          ? 'bg-amber-50/60 border-amber-200/60 text-slate-600'
+                          : 'bg-slate-50 border-slate-200/50 opacity-50'
+                      }`}
+                    >
+                      <div className="text-base sm:text-lg">{item.em}</div>
+                      <div className="text-[10px] truncate text-slate-800">{item.name}</div>
+                      {isCurrent && (
+                        <div className="text-[8px] text-emerald-700 font-extrabold uppercase mt-0.5">
+                          Hiện tại
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* ════════════════ PHILOSOPHY & STORY ════════════════ */}
-        <section className="bg-white/80 rounded-3xl p-6 sm:p-7 border border-amber-100 shadow-2xs space-y-4">
-          <div className="flex items-center gap-2 text-emerald-800 font-black text-sm sm:text-base">
-            <Heart className="w-4 h-4 text-emerald-600 fill-emerald-600" />
-            <span>Mọi cảm xúc đều được chấp nhận</span>
-          </div>
-
-          <p className="text-xs sm:text-sm text-slate-600 leading-relaxed italic">
-            “Mỗi cảm xúc bạn vẽ hôm nay là một hạt giống. Bạn không cần phải biết nó sẽ trở thành gì. Cứ gieo xuống, rồi một ngày nhìn lại — bạn sẽ thấy mình đã lớn lên cùng nó.”
-          </p>
-
-          {/* Growth stages progression roadmap */}
-          <div className="pt-2 border-t border-slate-100">
-            <div className="text-xs font-bold text-slate-700 mb-3 flex items-center justify-between">
-              <span>Hành trình phát triển của cây:</span>
-              <span className="text-[11px] text-emerald-700 font-semibold">
-                Không áp lực • Cây không bao giờ chết
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
-              {[
-                { s: 1, em: '🌱', name: 'Mầm nhỏ', req: '0–2 hạt' },
-                { s: 2, em: '🌿', name: 'Cây non', req: '3–6 hạt' },
-                { s: 3, em: '🌳', name: 'Cây lớn', req: '7–12 hạt' },
-                { s: 4, em: '🌳🌸', name: 'Trưởng thành', req: '13–20 hạt' },
-                { s: 5, em: '🌳✨', name: 'Sức sống', req: '21+ hạt' }
-              ].map((item) => {
-                const isActive = currentStage === item.s;
-                const isPassed = currentStage > item.s;
-                return (
-                  <div
-                    key={item.s}
-                    className={`p-3 rounded-2xl border transition-all ${
-                      isActive
-                        ? 'bg-emerald-50 border-emerald-300 ring-2 ring-emerald-400/40 shadow-xs'
-                        : isPassed
-                        ? 'bg-amber-50/60 border-amber-200/80 opacity-90'
-                        : 'bg-slate-50 border-slate-200/60 opacity-60'
-                    }`}
-                  >
-                    <div className="text-xl mb-1">{item.em}</div>
-                    <div className="text-xs font-bold text-slate-800">{item.name}</div>
-                    <div className="text-[10px] text-slate-500 font-medium mt-0.5">{item.req}</div>
-                    {isActive && (
-                      <div className="text-[10px] font-bold text-emerald-700 mt-1">
-                        Hiện tại
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </section>
-
         {/* Anti-guilt guarantee banner */}
-        <section className="bg-gradient-to-r from-amber-50 via-emerald-50 to-amber-50 rounded-2xl p-4 sm:p-5 border border-amber-200/80 flex items-start gap-3.5">
+        <section className="bg-gradient-to-r from-amber-50/90 via-emerald-50/80 to-amber-50/90 rounded-3xl p-4 sm:p-5 border border-amber-200/80 flex items-start gap-3.5 shadow-2xs">
           <ShieldCheck className="w-5 h-5 text-emerald-700 shrink-0 mt-0.5" />
           <div className="space-y-1 text-xs sm:text-sm text-slate-700 leading-relaxed">
             <p className="font-bold text-slate-900">
-              Cam kết dịu dàng với cảm xúc của bạn:
+              Góc bình yên không áp lực:
             </p>
             <p className="text-slate-600">
-              Không có chuỗi ngày bắt buộc (streak), không trách móc khi bạn vắng mặt. Ngay cả khi bạn quay lại sau nhiều ngày hoặc nhiều tuần, cái cây vẫn kiên nhẫn đứng đợi bạn ở đây. Cảm xúc buồn hay mệt mỏi cũng quý giá như niềm vui, và tất cả đều nuôi cái cây lớn lên.
+              Không có chuỗi ngày bắt buộc (streak), không trách móc khi bạn vắng mặt. Cây không bao giờ chết hay héo. Cảm xúc buồn hay mệt mỏi cũng quý giá như niềm vui, và tất cả đều nuôi cái cây lớn lên theo cách tự nhiên nhất.
             </p>
           </div>
         </section>
@@ -524,16 +778,24 @@ export const EmotionPlantView: React.FC = () => {
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
         seeds={seeds}
+        dailyLogs={dailyLogs}
         onDeleteSeed={handleDeleteSeed}
       />
 
-      <PlantMessagesModal
-        isOpen={isMessagesModalOpen}
-        onClose={() => setIsMessagesModalOpen(false)}
-        messages={messages}
-        permissions={permissions}
-        onMarkRead={handleMarkMessageRead}
-        onUpdatePermissions={handleUpdatePermissions}
+      <GardenDecorationsModal
+        isOpen={isDecorationsOpen}
+        unlockedDecorations={unlockedDecorations}
+        rewards={rewards}
+        onClose={() => setIsDecorationsOpen(false)}
+      />
+
+      <RewardGiftModal
+        isOpen={isGiftModalOpen}
+        reward={activeGift}
+        onClose={() => {
+          setIsGiftModalOpen(false);
+          setActiveGift(null);
+        }}
       />
     </div>
   );

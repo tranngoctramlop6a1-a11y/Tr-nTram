@@ -4,7 +4,6 @@ export type NavigationTab =
   | 'letters'
   | 'plant'
   | 'journal'
-  | 'friends'
   | 'confessions'
   | 'scenarios'
   | 'quizzes'
@@ -322,80 +321,98 @@ export interface StickyNote {
 }
 
 export interface AuthUser {
-  id: string;
+  id: string; // Stable UID
+  email?: string;
   nickname: string;
   avatar: string;
-  friend_id: string;
   created_at: string;
-  friendCount?: number;
-}
-
-export interface FriendUser {
-  id: string;
-  nickname: string;
-  avatar: string;
-  friend_id: string;
-  is_online: boolean;
-  since: string;
-}
-
-export interface FriendRequestItem {
-  id: string;
-  sender_id?: string;
-  receiver_id?: string;
-  nickname: string;
-  avatar: string;
-  friend_id: string;
-  created_at: string;
-}
-
-export interface BlockedUser {
-  id: string;
-  nickname: string;
-  friend_id: string;
-  avatar: string;
+  createdAt?: string;
 }
 
 export type SeedGrowthEffect = 'flower' | 'leaf' | 'branch' | 'root' | 'fruit' | 'firefly' | 'sprout';
+
+export type PlantWeatherType = 
+  | 'sunny' 
+  | 'rainy' 
+  | 'cloudy' 
+  | 'gentle_sun' 
+  | 'night' 
+  | 'rainbow' 
+  | 'starry_night';
+
+export type PlantEmotionType = 
+  | 'happy'       // 😊 Vui
+  | 'fine'        // 🙂 Ổn
+  | 'neutral'     // 😐 Bình thường
+  | 'sad'         // 😔 Hơi buồn
+  | 'stressed'    // 😣 Áp lực
+  | 'anxious'     // 😰 Lo lắng
+  | 'angry'       // 😡 Bực mình
+  | 'lonely'      // 🥺 Cô đơn
+  | 'unknown';    // 🤷 Không biết
+
+export interface PlantEmotionOption {
+  id: PlantEmotionType;
+  emoji: string;
+  label: string;
+  weatherInfluence: PlantWeatherType;
+  description: string;
+}
+
+export interface GardenDecorationItem {
+  id: string;
+  type: 'butterfly' | 'flower' | 'mushroom' | 'moon' | 'cloud' | 'star' | 'rainbow' | 'ladybug';
+  name: string;
+  emoji: string;
+  unlockedAt: string;
+}
+
+export interface PlantRewardItem {
+  id: string;
+  type: 'sticker' | 'wish' | 'quote' | 'decoration';
+  title: string;
+  content: string;
+  emoji: string;
+  decoration?: GardenDecorationItem;
+  createdAt: string;
+}
+
+export interface DailyPlantLog {
+  date: string; // YYYY-MM-DD
+  weather: PlantWeatherType;
+  emotion?: PlantEmotionType;
+  sowedSeed: boolean;
+  fertilizerKg: number;
+  fertilizerRequiredKg: number;
+  fertilizerDone: boolean;
+}
 
 export interface EmotionSeedItem {
   id: string;
   createdAt: string; // ISO string
   drawingDataUrl: string; // Base64 data url of the circular drawing
   growthEffect: SeedGrowthEffect; // Type of change contributed to the plant
-  stageAtSowing: number; // 1 to 5
+  stageAtSowing: number; // 1 to 6
+  emotion?: PlantEmotionType;
+  weather?: PlantWeatherType;
   note?: string; // Optional user note if any
 }
 
-export type EncouragementEffect = 'flower' | 'leaf' | 'sun' | 'dew' | 'fruit';
-
-export interface PlantCareMessage {
-  id: string;
-  plantOwnerUserId: string;
-  senderUserId: string;
-  senderNickname: string;
-  senderAvatar: string;
-  senderFriendId: string;
-  message: string;
-  visualEffect: EncouragementEffect;
-  createdAt: string;
-  readAt?: string | null;
+export interface FullPlantState {
+  seeds: EmotionSeedItem[];
+  currentWeather: PlantWeatherType;
+  todayEmotion?: PlantEmotionType;
+  todayFertilizer: {
+    date: string;
+    requiredKg: number;
+    currentKg: number;
+    isCompleted: boolean;
+  };
+  dailyLogs: Record<string, DailyPlantLog>;
+  unlockedDecorations: GardenDecorationItem[];
+  rewards: PlantRewardItem[];
+  pendingGift: boolean;
+  lastVisitedDate?: string;
 }
 
-export interface PlantPermissions {
-  allowFriendsToCare: boolean;
-  allowEncouragementMessages: boolean;
-}
-
-export interface FriendPlantData {
-  ownerNickname: string;
-  ownerAvatar: string;
-  ownerFriendId: string;
-  stage: number;
-  seedCount: number;
-  messages: PlantCareMessage[];
-  permissions: PlantPermissions;
-  isAllowed: boolean;
-  reason?: string;
-}
 

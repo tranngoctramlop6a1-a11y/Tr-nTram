@@ -14,7 +14,6 @@ import { HelpView } from './components/HelpView';
 import { StoriesView } from './components/StoriesView';
 import { ChatbotView } from './components/ChatbotView';
 import { JournalView } from './components/JournalView';
-import { FriendsView } from './components/FriendsView';
 import { EmotionPlantView } from './components/plant/EmotionPlantView';
 import { SelfLettersView } from './components/letters/SelfLettersView';
 import { FloatingChatbotWidget } from './components/FloatingChatbotWidget';
@@ -39,8 +38,6 @@ import {
   Headphones,
   CheckCircle2,
   BookOpen,
-  Users,
-  UserPlus,
   Sprout,
   Mail
 } from 'lucide-react';
@@ -276,33 +273,6 @@ function AppContent() {
 
                 </div>
 
-              </div>
-            </section>
-
-            {/* 👥 Spotlight: "Góc Bạn bè bằng Friend ID" */}
-            <section className="max-w-6xl mx-auto px-4 sm:px-6 py-2">
-              <div className="bg-gradient-to-r from-teal-50 via-emerald-50 to-cyan-50 rounded-3xl p-6 sm:p-7 border border-teal-200/80 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-6 hover:shadow-md transition-shadow">
-                <div className="space-y-2 max-w-xl">
-                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/90 border border-teal-200 text-xs font-bold text-teal-800 shadow-2xs">
-                    <ShieldCheck className="w-3.5 h-3.5 text-teal-600" />
-                    <span>Kết nối an toàn • Không mạng xã hội • Bảo mật 100%</span>
-                  </div>
-                  <h3 className="text-xl sm:text-2xl font-black text-slate-900">
-                    👥 Kết bạn an toàn bằng Friend ID
-                  </h3>
-                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                    Tìm kiếm bạn bè bằng mã định danh cá nhân (Friend ID). Tuyệt đối không hiển thị email Google, không chia sẻ nhật ký riêng tư hay nội dung chatbot. Chỉ có một người bạn đồng hành thực thụ.
-                  </p>
-                </div>
-
-                <button
-                  onClick={() => setCurrentTab('friends')}
-                  className="px-5 py-3 rounded-2xl bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white font-bold text-xs sm:text-sm shadow-sm hover:shadow-md transition-all flex items-center gap-2 shrink-0 cursor-pointer"
-                >
-                  <Users className="w-4 h-4" />
-                  <span>Khám phá góc Bạn bè</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
               </div>
             </section>
 
@@ -616,9 +586,6 @@ function AppContent() {
 
         {/* Tab 8: Stories */}
         {currentTab === 'stories' && <StoriesView />}
-
-        {/* Tab 9: Friends / Bạn bè */}
-        {currentTab === 'friends' && <FriendsView />}
 
         {/* Tab: 🌱 Hộp cây cảm xúc */}
         {currentTab === 'plant' && <EmotionPlantView />}

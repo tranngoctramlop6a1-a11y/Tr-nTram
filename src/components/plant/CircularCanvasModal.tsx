@@ -10,7 +10,8 @@ import {
   Send,
   Check,
   CheckCircle2,
-  Trash2
+  Trash2,
+  Palette
 } from 'lucide-react';
 import { SeedGrowthEffect } from '../../types';
 
@@ -20,18 +21,32 @@ interface CircularCanvasModalProps {
   onSow: (drawingDataUrl: string, effect: SeedGrowthEffect) => void;
 }
 
-const COLOR_PALETTE = [
-  { id: 'charcoal', hex: '#2D3748', label: 'Than chì' },
-  { id: 'terracotta', hex: '#EA580C', label: 'Đất nung' },
-  { id: 'rose', hex: '#E11D48', label: 'Hoa hồng' },
-  { id: 'amber', hex: '#D97706', label: 'Mật ong' },
-  { id: 'sun', hex: '#FACC15', label: 'Nắng ấm' },
-  { id: 'sage', hex: '#059669', label: 'Xanh lá' },
-  { id: 'sky', hex: '#0284C7', label: 'Bầu trời' },
-  { id: 'indigo', hex: '#4F46E5', label: 'Hoàng hôn' },
-  { id: 'violet', hex: '#9333EA', label: 'Mơ mộng' },
-  { id: 'rain', hex: '#64748B', label: 'Mây mưa' }
-];
+// Grouped palettes matching requirements
+export const PALETTES = {
+  basic: [
+    { id: 'red', hex: '#EF4444', label: 'Đỏ' },
+    { id: 'orange', hex: '#F97316', label: 'Cam' },
+    { id: 'yellow', hex: '#EAB308', label: 'Vàng' },
+    { id: 'green', hex: '#22C55E', label: 'Xanh lá' },
+    { id: 'blue', hex: '#3B82F6', label: 'Xanh dương' },
+    { id: 'purple', hex: '#A855F7', label: 'Tím' },
+    { id: 'pink', hex: '#EC4899', label: 'Hồng' }
+  ],
+  pastel: [
+    { id: 'pastel_pink', hex: '#FBCFE8', label: 'Hồng pastel' },
+    { id: 'pastel_purple', hex: '#E9D5FF', label: 'Tím pastel' },
+    { id: 'pastel_blue', hex: '#BAE6FD', label: 'Xanh pastel' },
+    { id: 'pastel_yellow', hex: '#FEF08A', label: 'Vàng pastel' },
+    { id: 'pastel_orange', hex: '#FED7AA', label: 'Cam pastel' },
+    { id: 'pastel_green', hex: '#BBF7D0', label: 'Xanh lá pastel' }
+  ],
+  special: [
+    { id: 'charcoal', hex: '#1E293B', label: 'Xanh đêm' },
+    { id: 'night_purple', hex: '#4C1D95', label: 'Tím đêm' },
+    { id: 'silver', hex: '#94A3B8', label: 'Bạc' },
+    { id: 'golden_light', hex: '#FDE047', label: 'Vàng ánh sáng' }
+  ]
+};
 
 const BRUSH_SIZES = [
   { size: 3, label: 'Thanh mảnh' },
@@ -60,7 +75,9 @@ export const CircularCanvasModal: React.FC<CircularCanvasModalProps> = ({
   const activePointerIdRef = useRef<number | null>(null);
   const canvasSizeRef = useRef<number>(288);
 
-  const [currentColor, setCurrentColor] = useState<string>('#2D3748');
+  const [activeTab, setActiveTab] = useState<'basic' | 'pastel' | 'special'>('basic');
+  const [currentColor, setCurrentColor] = useState<string>('#EF4444');
+  const [customColor, setCustomColor] = useState<string>('#059669');
   const [currentSize, setCurrentSize] = useState<number>(6);
   const [isEraser, setIsEraser] = useState<boolean>(false);
   const [selectedEffect, setSelectedEffect] = useState<SeedGrowthEffect>('sprout');
@@ -68,7 +85,7 @@ export const CircularCanvasModal: React.FC<CircularCanvasModalProps> = ({
   const [hasDrawn, setHasDrawn] = useState<boolean>(false);
   const [history, setHistory] = useState<ImageData[]>([]);
 
-  // Synchronized refs to prevent stale closure in pointer event listeners
+  // Synchronized refs to prevent stale closures in pointer listeners
   const currentColorRef = useRef<string>(currentColor);
   const currentSizeRef = useRef<number>(currentSize);
   const isEraserRef = useRef<boolean>(isEraser);
@@ -102,7 +119,6 @@ export const CircularCanvasModal: React.FC<CircularCanvasModalProps> = ({
     activePointerIdRef.current = null;
     setIsDrawing(false);
 
-    // Determine layout size accurately, avoiding transform-scaling distortions
     const clientSize = canvas.clientWidth || canvas.offsetWidth || 0;
     const size = clientSize > 0 ? clientSize : 288;
     canvasSizeRef.current = size;
@@ -111,11 +127,10 @@ export const CircularCanvasModal: React.FC<CircularCanvasModalProps> = ({
     canvas.width = Math.round(size * dpr);
     canvas.height = Math.round(size * dpr);
 
-    // Reset transform before scaling by DPR
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.scale(dpr, dpr);
 
-    // Warm textured paper background
+    // Textured circular paper background
     ctx.clearRect(0, 0, size, size);
     ctx.fillStyle = '#FAF7F2';
     ctx.beginPath();
@@ -127,14 +142,13 @@ export const CircularCanvasModal: React.FC<CircularCanvasModalProps> = ({
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // Clip to circle so drawing operations are strictly confined to the paper
+    // Clip to circle so drawing is strictly confined
     ctx.beginPath();
     ctx.arc(size / 2, size / 2, size / 2 - 1, 0, Math.PI * 2);
     ctx.clip();
-    // CRITICAL: Reset the path immediately so the circle arc is NOT left in the path
+    // Critical: Close path immediately so it doesn't linger
     ctx.beginPath();
 
-    // Save initial state for history
     const initialData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     setHistory([initialData]);
     setHasDrawn(false);
@@ -144,7 +158,6 @@ export const CircularCanvasModal: React.FC<CircularCanvasModalProps> = ({
     if (isOpen) {
       setAnimPhase('drawing');
       setFoldedSeedImage(null);
-      // Small timeout to allow DOM layout to settle
       const t = setTimeout(initCanvas, 50);
       return () => clearTimeout(t);
     }
@@ -168,7 +181,6 @@ export const CircularCanvasModal: React.FC<CircularCanvasModalProps> = ({
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (animPhase !== 'drawing') return;
-    // Only accept primary button (e.button === 0) or touch/pen
     if (e.pointerType === 'mouse' && e.button !== 0) return;
 
     e.preventDefault();
@@ -177,7 +189,6 @@ export const CircularCanvasModal: React.FC<CircularCanvasModalProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Capture pointer so fast movements or dragging outside canvas remain tracked
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
       activePointerIdRef.current = e.pointerId;
@@ -185,41 +196,37 @@ export const CircularCanvasModal: React.FC<CircularCanvasModalProps> = ({
       // Safe fallback
     }
 
-    // 1. Get exact canvas coordinates at contact point
     const point = getCanvasCoords(e);
 
-    // 2. Reset previous stroke state - THIS IS A COMPLETELY NEW STROKE
+    // Brand new independent stroke
     isDrawingRef.current = true;
     lastPointRef.current = point;
     setIsDrawing(true);
     setHasDrawn(true);
 
-    // 3. Configure stroke appearance
     ctx.strokeStyle = isEraserRef.current ? '#FAF7F2' : currentColorRef.current;
     ctx.lineWidth = currentSizeRef.current;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    // 4. Start fresh path and draw immediate dot at contact position
+    // Strictly isolated start
     ctx.beginPath();
-    ctx.moveTo(point.x, point.y);
-    ctx.lineTo(point.x, point.y);
-    ctx.stroke();
+    ctx.arc(point.x, point.y, currentSizeRef.current / 2, 0, Math.PI * 2);
+    ctx.fillStyle = isEraserRef.current ? '#FAF7F2' : currentColorRef.current;
+    ctx.fill();
+    ctx.beginPath();
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    // 5. Do not draw when not in drawing state
     if (!isDrawingRef.current || !lastPointRef.current || animPhase !== 'drawing') {
       return;
     }
 
-    // If mouse button was released outside the window
     if (e.pointerType === 'mouse' && e.buttons === 0) {
       handlePointerEnd(e);
       return;
     }
 
-    // If multi-touch, ignore other pointers
     if (activePointerIdRef.current !== null && e.pointerId !== activePointerIdRef.current) {
       return;
     }
@@ -233,11 +240,16 @@ export const CircularCanvasModal: React.FC<CircularCanvasModalProps> = ({
     const currentPoint = getCanvasCoords(e);
     const prevPoint = lastPointRef.current;
 
-    // Segment drawing - each segment is cleanly stroked independently
+    // Segment drawing - isolated stroke
     ctx.beginPath();
+    ctx.strokeStyle = isEraserRef.current ? '#FAF7F2' : currentColorRef.current;
+    ctx.lineWidth = currentSizeRef.current;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
     ctx.moveTo(prevPoint.x, prevPoint.y);
     ctx.lineTo(currentPoint.x, currentPoint.y);
     ctx.stroke();
+    ctx.beginPath(); // Reset immediately
 
     lastPointRef.current = currentPoint;
   };
@@ -245,7 +257,6 @@ export const CircularCanvasModal: React.FC<CircularCanvasModalProps> = ({
   const handlePointerEnd = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!isDrawingRef.current) return;
 
-    // Release pointer capture
     if (activePointerIdRef.current !== null) {
       try {
         if (e.currentTarget.hasPointerCapture(activePointerIdRef.current)) {
@@ -277,13 +288,11 @@ export const CircularCanvasModal: React.FC<CircularCanvasModalProps> = ({
   };
 
   const handlePointerLeave = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    // If pointer capture is NOT active and pointer leaves, end stroke
     if (activePointerIdRef.current === null && isDrawingRef.current) {
       handlePointerEnd(e);
     }
   };
 
-  // Undo
   const handleUndo = () => {
     if (history.length <= 1) return;
     const canvas = canvasRef.current;
@@ -306,7 +315,6 @@ export const CircularCanvasModal: React.FC<CircularCanvasModalProps> = ({
     }
   };
 
-  // Clear / Làm lại
   const handleClear = () => {
     initCanvas();
   };
@@ -316,7 +324,6 @@ export const CircularCanvasModal: React.FC<CircularCanvasModalProps> = ({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // Get circular drawing data URL
     const dataUrl = canvas.toDataURL('image/png');
     setFoldedSeedImage(dataUrl);
 
@@ -357,7 +364,7 @@ export const CircularCanvasModal: React.FC<CircularCanvasModalProps> = ({
                 Tờ giấy cảm xúc hình tròn
               </h3>
               <p className="text-xs text-slate-500">
-                Cứ vẽ tự do mọi nét vẽ. Không có cảm xúc nào là sai.
+                Vẽ tự do mọi nét vẽ. Không có cảm xúc nào là sai.
               </p>
             </div>
           </div>
@@ -372,13 +379,11 @@ export const CircularCanvasModal: React.FC<CircularCanvasModalProps> = ({
         </div>
 
         {/* Canvas Body */}
-        <div className="p-4 sm:p-6 flex flex-col items-center">
+        <div className="p-4 sm:p-5 flex flex-col items-center">
           {/* Circular Paper Container */}
           <div className="relative w-64 h-64 sm:w-72 sm:h-72 flex items-center justify-center">
-            {/* Soft shadow ring simulating paper sitting on wooden table */}
             <div className="absolute inset-0 rounded-full bg-gradient-to-b from-amber-900/5 to-amber-900/15 blur-md pointer-events-none" />
 
-            {/* Folding animation container */}
             <AnimatePresence mode="wait">
               {animPhase === 'drawing' ? (
                 <motion.div
@@ -397,7 +402,6 @@ export const CircularCanvasModal: React.FC<CircularCanvasModalProps> = ({
                     onPointerLeave={handlePointerLeave}
                   />
 
-                  {/* Empty state prompt on paper when untouched */}
                   {!hasDrawn && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center p-4">
                       <Paintbrush className="w-6 h-6 text-amber-300/80 mb-1" />
@@ -408,7 +412,6 @@ export const CircularCanvasModal: React.FC<CircularCanvasModalProps> = ({
                   )}
                 </motion.div>
               ) : animPhase === 'folding' ? (
-                // Step 1: Paper folds in half then folds into a small seed packet
                 <motion.div
                   key="folding-paper"
                   initial={{ rotate: 0, scale: 1, rotateY: 0 }}
@@ -430,7 +433,6 @@ export const CircularCanvasModal: React.FC<CircularCanvasModalProps> = ({
                   )}
                 </motion.div>
               ) : (
-                // Step 2: Seed pellet drops down smoothly into the box below
                 <motion.div
                   key="dropping-seed"
                   initial={{ y: 0, scale: 0.35, opacity: 1 }}
@@ -444,10 +446,10 @@ export const CircularCanvasModal: React.FC<CircularCanvasModalProps> = ({
             </AnimatePresence>
           </div>
 
-          {/* Canvas Controls (only shown when drawing) */}
+          {/* Canvas Controls */}
           {animPhase === 'drawing' && (
-            <div className="w-full mt-5 space-y-4">
-              {/* Tool bar: Brush / Eraser / Undo / Clear */}
+            <div className="w-full mt-4 space-y-3.5">
+              {/* Tool bar: Brush / Eraser / Brush Sizes / Undo / Clear */}
               <div className="flex items-center justify-between gap-2 px-1">
                 <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
                   <button
@@ -460,7 +462,7 @@ export const CircularCanvasModal: React.FC<CircularCanvasModalProps> = ({
                     }`}
                   >
                     <Paintbrush className="w-3.5 h-3.5" />
-                    <span>Bút vẽ</span>
+                    <span>Bút</span>
                   </button>
 
                   <button
@@ -521,39 +523,99 @@ export const CircularCanvasModal: React.FC<CircularCanvasModalProps> = ({
                 </div>
               </div>
 
-              {/* Color Palette (10 delicate shades) */}
+              {/* Categorized Color Palette Tabs & Color Circles */}
               {!isEraser && (
-                <div className="flex items-center justify-between gap-1.5 py-1 px-1 overflow-x-auto">
-                  {COLOR_PALETTE.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => setCurrentColor(c.hex)}
-                      title={c.label}
-                      className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full transition-transform cursor-pointer relative shrink-0 flex items-center justify-center ${
-                        currentColor === c.hex
-                          ? 'scale-110 ring-2 ring-offset-2 ring-emerald-500 shadow-xs'
-                          : 'hover:scale-105'
-                      }`}
-                      style={{ backgroundColor: c.hex }}
+                <div className="space-y-2 bg-slate-50/80 rounded-2xl p-2.5 border border-slate-100">
+                  {/* Palette category switcher */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1 text-[11px] font-bold">
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('basic')}
+                        className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                          activeTab === 'basic'
+                            ? 'bg-white text-slate-900 shadow-2xs'
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        🌈 Cơ bản
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('pastel')}
+                        className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                          activeTab === 'pastel'
+                            ? 'bg-white text-slate-900 shadow-2xs'
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        🌷 Pastel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('special')}
+                        className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                          activeTab === 'special'
+                            ? 'bg-white text-slate-900 shadow-2xs'
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        🌌 Đặc biệt
+                      </button>
+                    </div>
+
+                    {/* Native Custom Color Picker */}
+                    <label
+                      title="Chọn màu tự do"
+                      className="relative flex items-center gap-1 px-2 py-1 bg-white hover:bg-amber-50 rounded-lg border border-slate-200 text-[11px] font-semibold text-slate-700 cursor-pointer shadow-2xs"
                     >
-                      {currentColor === c.hex && (
-                        <Check
-                          className={`w-3.5 h-3.5 ${
-                            c.id === 'sun' || c.id === 'amber' ? 'text-slate-900' : 'text-white'
-                          }`}
-                        />
-                      )}
-                    </button>
-                  ))}
+                      <Palette className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Tự chọn</span>
+                      <input
+                        type="color"
+                        value={customColor}
+                        onChange={(e) => {
+                          setCustomColor(e.target.value);
+                          setCurrentColor(e.target.value);
+                        }}
+                        className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                      />
+                    </label>
+                  </div>
+
+                  {/* Color dots for active category */}
+                  <div className="flex items-center gap-2 py-1 px-1 overflow-x-auto">
+                    {PALETTES[activeTab].map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setCurrentColor(c.hex)}
+                        title={c.label}
+                        className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full transition-transform cursor-pointer relative shrink-0 flex items-center justify-center ${
+                          currentColor.toLowerCase() === c.hex.toLowerCase()
+                            ? 'scale-110 ring-2 ring-offset-2 ring-emerald-500 shadow-xs'
+                            : 'hover:scale-105'
+                        }`}
+                        style={{ backgroundColor: c.hex }}
+                      >
+                        {currentColor.toLowerCase() === c.hex.toLowerCase() && (
+                          <Check
+                            className={`w-3.5 h-3.5 ${
+                              c.id.includes('yellow') || c.id === 'silver' ? 'text-slate-900' : 'text-white'
+                            }`}
+                          />
+                        )}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
 
-              {/* Optional Subtle Effect Selection */}
-              <div className="pt-2 border-t border-slate-100">
-                <div className="text-[11px] text-slate-400 font-medium mb-1.5 flex items-center justify-between">
-                  <span>Lời chúc gửi theo hạt giống (tùy chọn):</span>
-                  <span className="text-[10px] text-emerald-600 font-semibold">
+              {/* Optional Subtle Seed Effect Selection */}
+              <div className="pt-1">
+                <div className="text-[11px] text-slate-500 font-medium mb-1.5 flex items-center justify-between">
+                  <span>Tâm tình gửi gắm theo hạt giống:</span>
+                  <span className="text-[10px] text-emerald-700 font-semibold">
                     Cây luôn lớn, không có cảm xúc sai
                   </span>
                 </div>
@@ -581,14 +643,12 @@ export const CircularCanvasModal: React.FC<CircularCanvasModalProps> = ({
                 <button
                   type="button"
                   onClick={handleFoldAndSow}
-                  className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-800 text-white font-bold text-sm sm:text-base shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99]"
+                  disabled={!hasDrawn}
+                  className="w-full py-3 sm:py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-emerald-700 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-black text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Send className="w-4 h-4" />
-                  <span>📮 Gấp lại và gieo</span>
+                  <span>Gấp lại và gieo vào chậu</span>
                 </button>
-                <p className="text-[11px] text-center text-slate-400 mt-2">
-                  Tờ giấy sẽ được gấp lại thành một hạt giống nhỏ và cất vào chiếc hộp cảm xúc.
-                </p>
               </div>
             </div>
           )}

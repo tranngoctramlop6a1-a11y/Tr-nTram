@@ -3,15 +3,11 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useAuth, AVATAR_PRESETS } from '../../context/AuthContext';
 import { 
   X, 
-  Copy, 
   Check, 
-  User, 
   Shield, 
   LogOut, 
   Trash2, 
-  Users, 
   Edit3, 
-  UserX, 
   RefreshCw,
   AlertTriangle,
   Camera,
@@ -19,9 +15,16 @@ import {
   RotateCcw,
   CheckCircle2,
   AlertCircle,
-  Smile
+  Smile,
+  Mail,
+  Calendar,
+  CloudCheck,
+  ShieldCheck,
+  Lock,
+  KeyRound,
+  Eye,
+  EyeOff
 } from 'lucide-react';
-import { BlockedUser } from '../../types';
 import { UserAvatar } from '../common/UserAvatar';
 import { DailyAdviceSparkle } from '../common/DailyAdviceSparkle';
 import { validateAvatarFile, processAndOptimizeAvatar, isImageAvatar } from '../../utils/avatarUtils';
@@ -35,11 +38,11 @@ export const ProfileModal: React.FC = () => {
     updateProfile, 
     uploadAvatar,
     removeAvatar,
+    changePassword,
     logout, 
     deleteAccount 
   } = useAuth();
 
-  const [isCopied, setIsCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editNickname, setEditNickname] = useState('');
   const [editAvatar, setEditAvatar] = useState('');
@@ -54,10 +57,16 @@ export const ProfileModal: React.FC = () => {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
-  // Blocked list view
-  const [showBlocked, setShowBlocked] = useState(false);
-  const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
-  const [loadingBlocked, setLoadingBlocked] = useState(false);
+  // Password Management States
+  const [showPasswordSection, setShowPasswordSection] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [showCurrentPwd, setShowCurrentPwd] = useState(false);
+  const [showNewPwd, setShowNewPwd] = useState(false);
+  const [pwdError, setPwdError] = useState<string | null>(null);
+  const [pwdSuccess, setPwdSuccess] = useState<string | null>(null);
+  const [isSavingPwd, setIsSavingPwd] = useState(false);
 
   // Delete confirm
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -78,17 +87,48 @@ export const ProfileModal: React.FC = () => {
       setAvatarSuccess(null);
       setShowResetConfirm(false);
       setShowEmojiPicker(false);
+      setShowPasswordSection(false);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+      setPwdError(null);
+      setPwdSuccess(null);
     }
   }, [isProfileModalOpen]);
 
-  if (!isProfileModalOpen || !user) return null;
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwdError(null);
+    setPwdSuccess(null);
 
-  const handleCopyFriendId = () => {
-    if (!user?.id) return;
-    navigator.clipboard.writeText(user.id);
-    setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 2000);
+    if (newPassword.length < 8) {
+      setPwdError('Mật khẩu mới phải có ít nhất 8 ký tự.');
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setPwdError('Mật khẩu xác nhận chưa khớp.');
+      return;
+    }
+
+    setIsSavingPwd(true);
+    const res = await changePassword(newPassword, currentPassword || undefined);
+    setIsSavingPwd(false);
+
+    if (res.success) {
+      setPwdSuccess('Đã cập nhật mật khẩu website thành công!');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+      setTimeout(() => {
+        setPwdSuccess(null);
+        setShowPasswordSection(false);
+      }, 2500);
+    } else {
+      setPwdError(res.error || 'Đổi mật khẩu thất bại.');
+    }
   };
+
+  if (!isProfileModalOpen || !user) return null;
 
   // Handle image file selection
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -179,38 +219,6 @@ export const ProfileModal: React.FC = () => {
     setIsEditing(false);
   };
 
-  const fetchBlockedUsers = async () => {
-    if (!token) return;
-    setLoadingBlocked(true);
-    try {
-      const res = await fetch('/api/friends/blocked', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setBlockedUsers(data.blocked || []);
-      }
-    } catch {}
-    setLoadingBlocked(false);
-  };
-
-  const handleUnblock = async (targetUserId: string) => {
-    if (!token) return;
-    try {
-      const res = await fetch('/api/friends/unblock', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ targetUserId })
-      });
-      if (res.ok) {
-        setBlockedUsers((prev) => prev.filter((u) => u.id !== targetUserId));
-      }
-    } catch {}
-  };
-
   const handleDeleteAccount = async () => {
     setIsDeleting(true);
     await deleteAccount();
@@ -242,7 +250,7 @@ export const ProfileModal: React.FC = () => {
               </div>
               <h4 className="text-lg font-bold text-gray-800">Xóa tài khoản?</h4>
               <p className="text-xs text-gray-500 mt-2 leading-relaxed px-4">
-                Toàn bộ dữ liệu bạn bè, lời mời và thông tin tài khoản sẽ bị xóa vĩnh viễn và không thể khôi phục.
+                Toàn bộ dữ liệu sao lưu cá nhân (nhật ký, vườn cây cảm xúc, điểm số...) và tài khoản sẽ bị xóa vĩnh viễn và không thể khôi phục.
               </p>
               <div className="flex gap-3 mt-5">
                 <button
@@ -261,54 +269,6 @@ export const ProfileModal: React.FC = () => {
                   {isDeleting ? 'Đang xóa...' : 'Xóa vĩnh viễn'}
                 </button>
               </div>
-            </div>
-          ) : showBlocked ? (
-            <div>
-              <div className="flex items-center justify-between pb-3 mb-4 border-b border-gray-100">
-                <h4 className="text-sm font-bold text-gray-800 flex items-center gap-2">
-                  <UserX className="w-4 h-4 text-rose-500" />
-                  <span>Danh sách người đã chặn</span>
-                </h4>
-                <button
-                  type="button"
-                  onClick={() => setShowBlocked(false)}
-                  className="text-xs text-teal-600 font-medium hover:underline"
-                >
-                  Quay lại
-                </button>
-              </div>
-
-              {loadingBlocked ? (
-                <div className="py-8 text-center text-xs text-gray-400">Đang tải...</div>
-              ) : blockedUsers.length === 0 ? (
-                <div className="py-8 text-center text-xs text-gray-500">
-                  Bạn chưa chặn người dùng nào.
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {blockedUsers.map((b) => (
-                    <div
-                      key={b.id}
-                      className="p-3 rounded-2xl bg-gray-50 flex items-center justify-between border border-gray-100"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <UserAvatar avatar={b.avatar} name={b.nickname} id={b.id} size="sm" rounded="rounded-xl" />
-                        <div>
-                          <div className="text-xs font-semibold text-gray-800">{b.nickname}</div>
-                          <div className="text-[11px] text-gray-400 font-mono">{b.id}</div>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleUnblock(b.id)}
-                        className="text-xs px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-gray-700 hover:bg-gray-100 font-medium transition-colors"
-                      >
-                        Bỏ chặn
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           ) : (
             <div>
@@ -464,9 +424,9 @@ export const ProfileModal: React.FC = () => {
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
                       </div>
-                      <div className="flex items-center justify-center gap-1.5 text-xs text-gray-500 mt-0.5">
-                        <Users className="w-3.5 h-3.5 text-teal-500" />
-                        <span>{user.createdAt ? 'Thành viên mới' : '0 bạn bè'}</span>
+                      <div className="flex items-center justify-center gap-1.5 text-xs text-teal-700 bg-teal-50 px-3 py-1 rounded-full w-fit mx-auto mt-1 border border-teal-100">
+                        <ShieldCheck className="w-3.5 h-3.5 text-teal-600" />
+                        <span>Tài khoản đã đồng bộ bảo mật</span>
                       </div>
 
                       <div className="flex flex-wrap items-center justify-center gap-1.5 mt-3">
@@ -564,55 +524,176 @@ export const ProfileModal: React.FC = () => {
                 </div>
               )}
 
-              <div className="p-3.5 rounded-2xl bg-teal-50/70 border border-teal-100/90 mb-4">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[11px] font-semibold text-teal-800 uppercase tracking-wider">
-                    Friend ID của bạn
+              {/* Thẻ trạng thái Sao lưu & Đồng bộ */}
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-teal-50/90 to-emerald-50/70 border border-teal-100/90 mb-4 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-teal-900 flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-teal-600" />
+                    <span>Sao lưu & Đồng bộ đám mây</span>
                   </span>
-                  <span className="text-[11px] text-teal-600 font-medium">Bảo mật</span>
-                </div>
-                <div className="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-teal-200/80 shadow-xs">
-                  <span className="font-mono text-base font-bold text-teal-900 tracking-wider">
-                    {user.id}
+                  <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-full">
+                    Đang hoạt động
                   </span>
-                  <button
-                    type="button"
-                    onClick={handleCopyFriendId}
-                    className="flex items-center gap-1 text-xs font-semibold text-teal-600 hover:text-teal-700 bg-teal-50 hover:bg-teal-100 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
-                  >
-                    {isCopied ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-emerald-600" />
-                        <span className="text-emerald-600">Đã sao chép</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5" />
-                        <span>Sao chép</span>
-                      </>
-                    )}
-                  </button>
                 </div>
-                <p className="text-[11px] text-teal-700/80 mt-2">
-                  Mã này liên kết trực tiếp với tài khoản và avatar của bạn để kết bạn an toàn.
+
+                <div className="space-y-1.5 pt-1 text-xs text-gray-600">
+                  {user.email && (
+                    <div className="flex items-center justify-between py-1 border-b border-teal-100/60">
+                      <span className="flex items-center gap-1.5 text-gray-500">
+                        <Mail className="w-3.5 h-3.5 text-teal-500" />
+                        <span>Email liên kết:</span>
+                      </span>
+                      <span className="font-medium text-gray-800 text-right truncate max-w-[180px]">{user.email}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between py-1 border-b border-teal-100/60">
+                    <span className="flex items-center gap-1.5 text-gray-500">
+                      <Calendar className="w-3.5 h-3.5 text-teal-500" />
+                      <span>Ngày tham gia:</span>
+                    </span>
+                    <span className="font-medium text-gray-800">
+                      {new Date(user.created_at || user.createdAt || Date.now()).toLocaleDateString('vi-VN')}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between py-1">
+                    <span className="flex items-center gap-1.5 text-gray-500">
+                      <CloudCheck className="w-3.5 h-3.5 text-teal-500" />
+                      <span>Bảo vệ dữ liệu:</span>
+                    </span>
+                    <span className="font-medium text-emerald-700">Độc lập & Bảo mật</span>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-teal-800/80 leading-relaxed pt-1 bg-white/70 p-2.5 rounded-xl border border-teal-100/60">
+                  💡 Nhật ký cảm xúc, khu vườn tâm hồn và tiến trình của bạn được lưu an toàn trên đám mây. Đăng nhập lại trên bất kỳ thiết bị nào để tiếp tục.
                 </p>
               </div>
 
-              <div className="space-y-1.5 mb-5 border-t border-gray-100 pt-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowBlocked(true);
-                    fetchBlockedUsers();
-                  }}
-                  className="w-full flex items-center justify-between p-2.5 rounded-xl hover:bg-gray-50 text-gray-700 text-xs font-medium transition-colors cursor-pointer"
-                >
-                  <span className="flex items-center gap-2">
-                    <UserX className="w-4 h-4 text-gray-400" />
-                    <span>Quản lý danh sách đã chặn</span>
+              {/* Website Password Management */}
+              <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200/80 mb-4 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                    <KeyRound className="w-4 h-4 text-teal-600" />
+                    <span>Mật khẩu riêng của website</span>
                   </span>
-                  <span className="text-gray-400 text-[10px]">›</span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPasswordSection(!showPasswordSection);
+                      setPwdError(null);
+                      setPwdSuccess(null);
+                    }}
+                    className="text-[11px] font-semibold text-teal-700 hover:text-teal-800 bg-teal-50 hover:bg-teal-100 px-2.5 py-1 rounded-full transition-colors cursor-pointer"
+                  >
+                    {showPasswordSection ? 'Đóng lại' : user.has_password ? 'Đổi mật khẩu' : 'Thiết lập mật khẩu'}
+                  </button>
+                </div>
+
+                <p className="text-[11px] text-gray-500 leading-relaxed">
+                  Mật khẩu này dùng riêng cho website này (không phải mật khẩu Gmail). Bạn có thể đăng nhập bằng email + mật khẩu này.
+                </p>
+
+                {pwdSuccess && (
+                  <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>{pwdSuccess}</span>
+                  </div>
+                )}
+
+                {pwdError && (
+                  <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>{pwdError}</span>
+                  </div>
+                )}
+
+                {showPasswordSection && (
+                  <form onSubmit={handlePasswordSubmit} className="space-y-3 pt-2 border-t border-gray-200">
+                    {user.has_password && (
+                      <div>
+                        <label className="block text-[11px] font-medium text-gray-700 mb-1">
+                          Mật khẩu website hiện tại
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showCurrentPwd ? 'text' : 'password'}
+                            value={currentPassword}
+                            onChange={(e) => setCurrentPassword(e.target.value)}
+                            placeholder="Nhập mật khẩu hiện tại"
+                            required
+                            className="w-full px-3 py-2 pr-9 text-xs rounded-xl bg-white border border-gray-200 focus:outline-hidden focus:ring-2 focus:ring-teal-400"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowCurrentPwd(!showCurrentPwd)}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
+                            tabIndex={-1}
+                          >
+                            {showCurrentPwd ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-[11px] font-medium text-gray-700 mb-1">
+                        Mật khẩu website mới (tối thiểu 8 ký tự)
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showNewPwd ? 'text' : 'password'}
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          placeholder="Mật khẩu mới (ít nhất 8 ký tự)"
+                          required
+                          className="w-full px-3 py-2 pr-9 text-xs rounded-xl bg-white border border-gray-200 focus:outline-hidden focus:ring-2 focus:ring-teal-400"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowNewPwd(!showNewPwd)}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
+                          tabIndex={-1}
+                        >
+                          {showNewPwd ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-medium text-gray-700 mb-1">
+                        Nhập lại mật khẩu mới
+                      </label>
+                      <input
+                        type={showNewPwd ? 'text' : 'password'}
+                        value={confirmNewPassword}
+                        onChange={(e) => setConfirmNewPassword(e.target.value)}
+                        placeholder="Xác nhận lại mật khẩu mới"
+                        required
+                        className="w-full px-3 py-2 text-xs rounded-xl bg-white border border-gray-200 focus:outline-hidden focus:ring-2 focus:ring-teal-400"
+                      />
+                      {confirmNewPassword && newPassword !== confirmNewPassword && (
+                        <p className="text-[11px] text-rose-500 mt-1 font-medium">Mật khẩu chưa khớp.</p>
+                      )}
+                    </div>
+
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowPasswordSection(false)}
+                        className="flex-1 py-2 text-xs rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-100 cursor-pointer"
+                      >
+                        Hủy
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSavingPwd || newPassword.length < 8 || newPassword !== confirmNewPassword}
+                        className="flex-1 py-2 text-xs rounded-xl bg-teal-500 hover:bg-teal-600 disabled:opacity-50 text-white font-medium shadow-xs transition-colors cursor-pointer"
+                      >
+                        {isSavingPwd ? 'Đang lưu...' : 'Lưu mật khẩu mới'}
+                      </button>
+                    </div>
+                  </form>
+                )}
               </div>
 
               <div className="space-y-2 border-t border-gray-100 pt-3">
@@ -622,7 +703,7 @@ export const ProfileModal: React.FC = () => {
                   className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold transition-colors cursor-pointer"
                 >
                   <LogOut className="w-4 h-4" />
-                  <span>Đăng xuất (Trở về chế độ Khách)</span>
+                  <span>Đăng xuất (Chuyển sang chế độ Khách)</span>
                 </button>
 
                 <button
