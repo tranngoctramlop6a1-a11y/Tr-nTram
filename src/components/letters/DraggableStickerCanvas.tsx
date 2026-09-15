@@ -1,23 +1,40 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { RotateCw, RotateCcw, Trash2, ZoomIn, ZoomOut, ArrowUpCircle } from 'lucide-react';
-import { PlacedSticker, STICKER_LIBRARY } from './letterStickersData';
+import { PlacedSticker, STICKER_LIBRARY, StickerDefinition } from './letterStickersData';
 
 interface DraggableStickerCanvasProps {
   stickers: PlacedSticker[];
   onUpdateStickers?: (stickers: PlacedSticker[]) => void;
   isReadOnly?: boolean;
   className?: string;
+  selectedId?: string | null;
+  onSelectId?: (id: string | null) => void;
 }
 
 export const DraggableStickerCanvas: React.FC<DraggableStickerCanvasProps> = ({
   stickers,
   onUpdateStickers = () => {},
   isReadOnly = false,
-  className = ''
+  className = '',
+  selectedId: controlledSelectedId,
+  onSelectId
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);
+  const selectedId = controlledSelectedId !== undefined ? controlledSelectedId : internalSelectedId;
+
+  const setSelectedId = useCallback((id: string | null) => {
+    setInternalSelectedId(id);
+    if (onSelectId) onSelectId(id);
+  }, [onSelectId]);
+
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const stickersRef = useRef<PlacedSticker[]>(stickers);
+  stickersRef.current = stickers;
+
+  const onUpdateStickersRef = useRef(onUpdateStickers);
+  onUpdateStickersRef.current = onUpdateStickers;
+
   const dragStartRef = useRef<{
     startX: number;
     startY: number;
@@ -25,6 +42,7 @@ export const DraggableStickerCanvas: React.FC<DraggableStickerCanvasProps> = ({
     initialStickerY: number;
     rectWidth: number;
     rectHeight: number;
+    stickerId: string;
   } | null>(null);
 
   // Close selection when clicking outside
@@ -37,17 +55,22 @@ export const DraggableStickerCanvas: React.FC<DraggableStickerCanvasProps> = ({
     };
     window.addEventListener('mousedown', handleGlobalClick);
     return () => window.removeEventListener('mousedown', handleGlobalClick);
-  }, [isReadOnly]);
+  }, [isReadOnly, setSelectedId]);
 
-  // Handle Drag Move & End
+  // Handle Drag Move & End with stable listeners that never unbind/rebind mid-drag
   const handlePointerMove = useCallback((e: MouseEvent | TouchEvent) => {
-    if (!draggingId || !dragStartRef.current) return;
+    if (!dragStartRef.current) return;
+
+    // Prevent default scroll when dragging on mobile
+    if ('touches' in e && e.cancelable) {
+      e.preventDefault();
+    }
 
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
     const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
 
-    const { startX, startY, initialStickerX, initialStickerY, rectWidth, rectHeight } = dragStartRef.current;
-    if (rectWidth === 0 || rectHeight === 0) return;
+    const { startX, startY, initialStickerX, initialStickerY, rectWidth, rectHeight, stickerId } = dragStartRef.current;
+    if (rectWidth <= 0 || rectHeight <= 0) return;
 
     const deltaXPixels = clientX - startX;
     const deltaYPixels = clientY - startY;
@@ -56,31 +79,41 @@ export const DraggableStickerCanvas: React.FC<DraggableStickerCanvasProps> = ({
     const deltaXPercent = (deltaXPixels / rectWidth) * 100;
     const deltaYPercent = (deltaYPixels / rectHeight) * 100;
 
-    // Clamp coordinates so sticker doesn't escape paper boundary
-    const newX = Math.max(2, Math.min(94, initialStickerX + deltaXPercent));
-    const newY = Math.max(2, Math.min(95, initialStickerY + deltaYPercent));
+    // Clamp coordinates so sticker stays comfortably inside the letter sheet (4% - 96%)
+    const newX = Math.max(4, Math.min(96, initialStickerX + deltaXPercent));
+    const newY = Math.max(4, Math.min(96, initialStickerY + deltaYPercent));
 
-    onUpdateStickers(
-      stickers.map(stk => (stk.id === draggingId ? { ...stk, x: Math.round(newX * 10) / 10, y: Math.round(newY * 10) / 10 } : stk))
+    const currentList = stickersRef.current;
+    const updated = currentList.map(stk =>
+      stk.id === stickerId
+        ? { ...stk, x: Math.round(newX * 10) / 10, y: Math.round(newY * 10) / 10 }
+        : stk
     );
-  }, [draggingId, stickers, onUpdateStickers]);
+    onUpdateStickersRef.current(updated);
+  }, []);
 
   const handlePointerUp = useCallback(() => {
     setDraggingId(null);
     dragStartRef.current = null;
+    document.body.style.userSelect = '';
   }, []);
 
   useEffect(() => {
     if (draggingId) {
-      window.addEventListener('mousemove', handlePointerMove);
+      document.body.style.userSelect = 'none';
+      window.addEventListener('mousemove', handlePointerMove, { passive: false });
       window.addEventListener('mouseup', handlePointerUp);
       window.addEventListener('touchmove', handlePointerMove, { passive: false });
       window.addEventListener('touchend', handlePointerUp);
+      window.addEventListener('touchcancel', handlePointerUp);
+
       return () => {
+        document.body.style.userSelect = '';
         window.removeEventListener('mousemove', handlePointerMove);
         window.removeEventListener('mouseup', handlePointerUp);
         window.removeEventListener('touchmove', handlePointerMove);
         window.removeEventListener('touchend', handlePointerUp);
+        window.removeEventListener('touchcancel', handlePointerUp);
       };
     }
   }, [draggingId, handlePointerMove, handlePointerUp]);
@@ -106,16 +139,17 @@ export const DraggableStickerCanvas: React.FC<DraggableStickerCanvasProps> = ({
       startY: clientY,
       initialStickerX: stk.x,
       initialStickerY: stk.y,
-      rectWidth: rect.width,
-      rectHeight: rect.height
+      rectWidth: rect.width || 1,
+      rectHeight: rect.height || 1,
+      stickerId: stk.id
     };
   };
 
   // Sticker actions: Rotate, Scale, Delete, Bring to Front
   const handleRotate = (id: string, deltaDegrees: number, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    onUpdateStickers(
-      stickers.map(stk => {
+    onUpdateStickersRef.current(
+      stickersRef.current.map(stk => {
         if (stk.id !== id) return stk;
         let nextRotate = stk.rotate + deltaDegrees;
         if (nextRotate > 180) nextRotate -= 360;
@@ -127,10 +161,10 @@ export const DraggableStickerCanvas: React.FC<DraggableStickerCanvasProps> = ({
 
   const handleScale = (id: string, factorDelta: number, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    onUpdateStickers(
-      stickers.map(stk => {
+    onUpdateStickersRef.current(
+      stickersRef.current.map(stk => {
         if (stk.id !== id) return stk;
-        const newScale = Math.max(0.6, Math.min(2.0, stk.scale + factorDelta));
+        const newScale = Math.max(0.6, Math.min(1.8, stk.scale + factorDelta));
         return { ...stk, scale: Math.round(newScale * 100) / 100 };
       })
     );
@@ -138,15 +172,61 @@ export const DraggableStickerCanvas: React.FC<DraggableStickerCanvasProps> = ({
 
   const handleDelete = (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    onUpdateStickers(stickers.filter(stk => stk.id !== id));
+    onUpdateStickersRef.current(stickersRef.current.filter(stk => stk.id !== id));
     if (selectedId === id) setSelectedId(null);
   };
 
   const handleBringToFront = (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    const maxZ = Math.max(...stickers.map(s => s.zIndex || 1), 1);
-    onUpdateStickers(
-      stickers.map(stk => (stk.id === id ? { ...stk, zIndex: maxZ + 1 } : stk))
+    const maxZ = Math.max(...stickersRef.current.map(s => s.zIndex || 1), 1);
+    onUpdateStickersRef.current(
+      stickersRef.current.map(stk => (stk.id === id ? { ...stk, zIndex: maxZ + 1 } : stk))
+    );
+  };
+
+  // Helper to render proportional sticker graphic
+  const renderStickerGraphic = (stk: PlacedSticker, def?: StickerDefinition) => {
+    if (def) {
+      if (def.type === 'washi') {
+        return (
+          <div className="w-24 h-6 sm:w-28 sm:h-7 flex items-center justify-center">
+            {def.renderIcon({ className: 'w-full h-full object-contain' })}
+          </div>
+        );
+      }
+      if (def.type === 'postage') {
+        return (
+          <div className="w-12 h-15 sm:w-14 sm:h-18 flex items-center justify-center">
+            {def.renderIcon({ className: 'w-full h-full object-contain' })}
+          </div>
+        );
+      }
+      if (def.type === 'cute') {
+        return (
+          <div className="w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center">
+            {def.renderIcon({ className: 'w-full h-full object-contain' })}
+          </div>
+        );
+      }
+      return (
+        <div className="w-12 h-12 flex items-center justify-center">
+          {def.renderIcon({ className: 'w-full h-full object-contain' })}
+        </div>
+      );
+    }
+
+    if (stk.char) {
+      return (
+        <span className="text-2xl sm:text-3xl leading-none select-none block drop-shadow-xs">
+          {stk.char}
+        </span>
+      );
+    }
+
+    return (
+      <span className="text-xs font-serif px-2 py-0.5 bg-amber-50 rounded border border-amber-200 text-amber-900">
+        {stk.name}
+      </span>
     );
   };
 
@@ -185,32 +265,21 @@ export const DraggableStickerCanvas: React.FC<DraggableStickerCanvasProps> = ({
               }
             }}
           >
-            {/* Sticker Graphic Presentation */}
+            {/* Sticker Graphic Presentation with strict maximum boundaries */}
             <div
-              className={`relative p-1 rounded-sm transition-all duration-200 ${
+              className={`relative p-1 rounded-sm transition-all duration-150 max-w-[130px] max-h-[90px] flex items-center justify-center ${
                 isSelected && !isReadOnly
-                  ? 'ring-2 ring-[#A27357] ring-offset-2 ring-offset-transparent shadow-lg bg-[#FAF6EE]/40 backdrop-blur-[1px]'
+                  ? 'ring-2 ring-[#8C5A4B] ring-offset-2 ring-offset-transparent shadow-lg bg-[#FAF6EE]/40 backdrop-blur-[1px]'
                   : 'hover:drop-shadow-md'
               } ${isDragging ? 'scale-105 drop-shadow-xl opacity-90' : ''}`}
             >
-              {/* Content rendering */}
-              {def ? (
-                def.renderIcon({ className: 'max-w-none' })
-              ) : stk.char ? (
-                <span className="text-3xl leading-none select-none block drop-shadow-xs">
-                  {stk.char}
-                </span>
-              ) : (
-                <span className="text-sm font-serif px-2 py-1 bg-amber-50 rounded border border-amber-200 text-amber-900">
-                  {stk.name}
-                </span>
-              )}
+              {renderStickerGraphic(stk, def)}
             </div>
 
             {/* Interactive Control Floating Bubble (Only when selected and not in read-only mode) */}
             {isSelected && !isReadOnly && (
               <div
-                className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-[#2A1F18]/90 text-white/95 px-2 py-1 rounded-full shadow-2xl backdrop-blur-md border border-[#8C6D58]/40 animate-fadeIn pointer-events-auto z-50 text-[11px] font-sans"
+                className="absolute -top-11 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-[#2A1F18]/95 text-white px-2 py-1 rounded-full shadow-2xl backdrop-blur-md border border-[#8C6D58]/50 animate-fadeIn pointer-events-auto z-50 text-[11px] font-sans"
                 style={{
                   transform: `translateX(-50%) rotate(${-stk.rotate}deg)`, // Counter-rotate so buttons remain straight
                   transformOrigin: 'center center'
@@ -222,7 +291,7 @@ export const DraggableStickerCanvas: React.FC<DraggableStickerCanvasProps> = ({
                 <button
                   type="button"
                   onClick={e => handleRotate(stk.id, -15, e)}
-                  className="p-1 hover:bg-white/20 rounded-full text-amber-200 transition-colors"
+                  className="p-1 hover:bg-white/20 rounded-full text-amber-200 transition-colors cursor-pointer"
                   title="Xoay ngược chiều kim đồng hồ (-15°)"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
@@ -232,7 +301,7 @@ export const DraggableStickerCanvas: React.FC<DraggableStickerCanvasProps> = ({
                 <button
                   type="button"
                   onClick={e => handleRotate(stk.id, 15, e)}
-                  className="p-1 hover:bg-white/20 rounded-full text-amber-200 transition-colors"
+                  className="p-1 hover:bg-white/20 rounded-full text-amber-200 transition-colors cursor-pointer"
                   title="Xoay theo chiều kim đồng hồ (+15°)"
                 >
                   <RotateCw className="w-3.5 h-3.5" />
@@ -244,7 +313,7 @@ export const DraggableStickerCanvas: React.FC<DraggableStickerCanvasProps> = ({
                 <button
                   type="button"
                   onClick={e => handleScale(stk.id, 0.15, e)}
-                  className="p-1 hover:bg-white/20 rounded-full text-white transition-colors"
+                  className="p-1 hover:bg-white/20 rounded-full text-white transition-colors cursor-pointer"
                   title="Phóng to sticker"
                 >
                   <ZoomIn className="w-3.5 h-3.5" />
@@ -254,7 +323,7 @@ export const DraggableStickerCanvas: React.FC<DraggableStickerCanvasProps> = ({
                 <button
                   type="button"
                   onClick={e => handleScale(stk.id, -0.15, e)}
-                  className="p-1 hover:bg-white/20 rounded-full text-white transition-colors"
+                  className="p-1 hover:bg-white/20 rounded-full text-white transition-colors cursor-pointer"
                   title="Thu nhỏ sticker"
                 >
                   <ZoomOut className="w-3.5 h-3.5" />
@@ -266,7 +335,7 @@ export const DraggableStickerCanvas: React.FC<DraggableStickerCanvasProps> = ({
                 <button
                   type="button"
                   onClick={e => handleBringToFront(stk.id, e)}
-                  className="p-1 hover:bg-white/20 rounded-full text-emerald-300 transition-colors"
+                  className="p-1 hover:bg-white/20 rounded-full text-emerald-300 transition-colors cursor-pointer"
                   title="Đưa lên lớp trên cùng"
                 >
                   <ArrowUpCircle className="w-3.5 h-3.5" />
@@ -276,7 +345,7 @@ export const DraggableStickerCanvas: React.FC<DraggableStickerCanvasProps> = ({
                 <button
                   type="button"
                   onClick={e => handleDelete(stk.id, e)}
-                  className="p-1 hover:bg-red-500/80 rounded-full text-red-200 transition-colors ml-0.5"
+                  className="p-1 hover:bg-red-500/80 rounded-full text-red-200 transition-colors ml-0.5 cursor-pointer"
                   title="Xóa sticker này"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -289,3 +358,4 @@ export const DraggableStickerCanvas: React.FC<DraggableStickerCanvasProps> = ({
     </div>
   );
 };
+

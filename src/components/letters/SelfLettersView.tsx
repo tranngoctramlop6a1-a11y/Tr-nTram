@@ -21,14 +21,16 @@ import {
   Clock,
   Feather,
   HeartHandshake,
-  Smile
+  Smile,
+  Pipette
 } from 'lucide-react';
 import { SelfLetterRecord, SelfLetterSummary, PaperStyle, LetterFont } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import {
   PAPER_THEMES,
   getPaperThemeConfig,
-  PaperThemeConfig
+  PaperThemeConfig,
+  isColorDark
 } from './letterThemeConfig';
 import {
   PlacedSticker,
@@ -255,6 +257,54 @@ const DRAWING_BRUSH_COLORS = [
   { hex: '#FFFFFF', name: 'Phấn trắng' }
 ];
 
+// LocalStorage Persistence Helpers keyed per userId
+const getLettersStorageKey = (userId?: string) => `self_letters_list_${userId || 'guest'}`;
+const getDraftStorageKey = (userId?: string) => `self_letter_draft_${userId || 'guest'}`;
+
+function loadStoredLetters(userId?: string): SelfLetterRecord[] {
+  try {
+    const raw = localStorage.getItem(getLettersStorageKey(userId));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    console.error('Error reading letters from localStorage:', e);
+    return [];
+  }
+}
+
+function saveStoredLetters(userId: string | undefined, list: SelfLetterRecord[]) {
+  try {
+    localStorage.setItem(getLettersStorageKey(userId), JSON.stringify(list));
+  } catch (e) {
+    console.error('Error saving letters to localStorage:', e);
+  }
+}
+
+function recordToSummary(r: SelfLetterRecord): SelfLetterSummary {
+  const isLocked = new Date(r.open_date) > new Date();
+  const daysRemaining = Math.max(0, Math.ceil((new Date(r.open_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+  return {
+    id: r.id,
+    sender_name: r.sender_name,
+    receiver_name: r.receiver_name,
+    title: r.title,
+    paper_style: r.paper_style,
+    ink_color: r.ink_color,
+    font_family: r.font_family,
+    open_date: r.open_date,
+    wax_seal: r.wax_seal,
+    is_opened: r.is_opened,
+    opened_at: r.opened_at,
+    created_at: r.created_at,
+    is_locked: isLocked,
+    days_remaining: daysRemaining,
+    has_drawing: !!r.drawing_data,
+    theme_color: r.theme_color,
+    stickers_data: r.stickers_data
+  };
+}
+
 export const SelfLettersView: React.FC = () => {
   const { user, token } = useAuth();
   const [letters, setLetters] = useState<SelfLetterSummary[]>([]);
@@ -286,6 +336,7 @@ export const SelfLettersView: React.FC = () => {
   // Sticker Drawer & Free Draggable Sticker System State
   const [isStickerDrawerOpen, setIsStickerDrawerOpen] = useState(false);
   const [placedStickers, setPlacedStickers] = useState<PlacedSticker[]>([]);
+  const [selectedStickerId, setSelectedStickerId] = useState<string | null>(null);
   const [activeStickerCatId, setActiveStickerCatId] = useState<string>('postage');
   const [stickerApplyMode, setStickerApplyMode] = useState<'both' | 'text' | 'paper'>('both');
   const [lastStickerToast, setLastStickerToast] = useState<string | null>(null);
@@ -323,25 +374,112 @@ export const SelfLettersView: React.FC = () => {
     paperStyle: PaperStyle;
   } | null>(null);
 
-  // Fetch summaries
+  // Fetch summaries with instant localStorage fallback and merge
   const fetchSummaries = useCallback(async () => {
     setLoading(true);
+    // 1. Immediately hydrate from localStorage so user never loses letters on F5 or tab switch
+    const localRecords = loadStoredLetters(user?.id);
+    if (localRecords.length > 0) {
+      setLetters(localRecords.map(r => ({
+        id: r.id,
+        sender_name: r.sender_name,
+        receiver_name: r.receiver_name,
+        title: r.title,
+        paper_style: r.paper_style,
+        ink_color: r.ink_color,
+        font_family: r.font_family,
+        open_date: r.open_date,
+        wax_seal: r.wax_seal,
+        is_opened: r.is_opened,
+        opened_at: r.opened_at,
+        created_at: r.created_at,
+        is_locked: new Date(r.open_date) > new Date(),
+        days_remaining: Math.max(0, Math.ceil((new Date(r.open_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24))),
+        has_drawing: !!r.drawing_data,
+        theme_color: r.theme_color
+      })));
+    }
+
     try {
       const res = await fetch('/api/letters/summaries');
       const data = await res.json();
       if (data.success && Array.isArray(data.summaries)) {
-        setLetters(data.summaries);
+        // Merge remote summaries with local records
+        const currentLocal = loadStoredLetters(user?.id);
+        const mapById = new Map<string, any>();
+
+        for (const s of data.summaries) {
+          mapById.set(s.id, s);
+        }
+        for (const l of currentLocal) {
+          if (!mapById.has(l.id)) {
+            mapById.set(l.id, l);
+          } else {
+            const existing = mapById.get(l.id);
+            mapById.set(l.id, {
+              ...existing,
+              theme_color: l.theme_color || existing.theme_color
+            });
+          }
+        }
+        setLetters(Array.from(mapById.values()));
       }
     } catch (err) {
-      console.error('Error fetching letter summaries:', err);
+      console.warn('Network summaries fetch fallback to localStorage:', err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     fetchSummaries();
   }, [fetchSummaries]);
+
+  // Restore unsaved draft from localStorage if present
+  useEffect(() => {
+    try {
+      const rawDraft = localStorage.getItem(getDraftStorageKey(user?.id));
+      if (rawDraft) {
+        const d = JSON.parse(rawDraft);
+        if (d && (d.title || d.content || (d.placedStickers && d.placedStickers.length > 0))) {
+          if (d.title) setTitle(d.title);
+          if (d.content) setContent(d.content);
+          if (d.senderName) setSenderName(d.senderName);
+          if (d.receiverName) setReceiverName(d.receiverName);
+          if (d.paperStyle) setPaperStyle(d.paperStyle);
+          if (d.customBgColor) setCustomBgColor(d.customBgColor);
+          if (d.inkColor) setInkColor(d.inkColor);
+          if (d.fontFamily) setFontFamily(d.fontFamily);
+          if (d.waxSeal) setWaxSeal(d.waxSeal);
+          if (d.openDate) setOpenDate(d.openDate);
+          if (Array.isArray(d.placedStickers)) setPlacedStickers(d.placedStickers);
+        }
+      }
+    } catch (e) {}
+  }, [user?.id]);
+
+  // Auto-save draft on user edits
+  useEffect(() => {
+    if (!isCreating) return;
+    if (!title && !content && placedStickers.length === 0 && !customBgColor) return;
+
+    const draftObj = {
+      title,
+      content,
+      senderName,
+      receiverName,
+      paperStyle,
+      customBgColor,
+      inkColor,
+      fontFamily,
+      waxSeal,
+      openDate,
+      placedStickers
+    };
+    try {
+      localStorage.setItem(getDraftStorageKey(user?.id), JSON.stringify(draftObj));
+    } catch (e) {}
+  }, [isCreating, title, content, senderName, receiverName, paperStyle, customBgColor, inkColor, fontFamily, waxSeal, openDate, placedStickers, user?.id]);
 
   // Set sender name if user is logged in
   useEffect(() => {
@@ -499,11 +637,10 @@ export const SelfLettersView: React.FC = () => {
   // ================= STAMP & STICKER ACTIONS =================
   const handleAddGraphicSticker = (stkDef: StickerDefinition) => {
     const id = `stk-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-    const count = placedStickers.length;
-    // Calculate initial natural placement on paper
-    const x = Math.max(16, Math.min(84, 72 - (count % 3) * 16 + (Math.random() * 8 - 4)));
-    const y = Math.max(12, Math.min(82, 14 + Math.floor(count / 3) * 15 + (Math.random() * 8 - 4)));
-    const rotate = Math.round((Math.random() * 20 - 10) * 10) / 10;
+    // Center Spawn: New stickers appear exactly at the center of the sheet (x: 50%, y: 50%)
+    const x = 50;
+    const y = 50;
+    const rotate = 0;
     const scale = stkDef.defaultScale || 1.0;
     const maxZ = placedStickers.length > 0 ? Math.max(...placedStickers.map(s => s.zIndex || 1)) : 1;
 
@@ -521,6 +658,7 @@ export const SelfLettersView: React.FC = () => {
     };
 
     setPlacedStickers(prev => [...prev, newPlaced]);
+    setSelectedStickerId(id);
 
     // If text insertion is desired and char exists, also insert into text
     if ((stickerApplyMode === 'text' || stickerApplyMode === 'both') && stkDef.char) {
@@ -599,6 +737,12 @@ export const SelfLettersView: React.FC = () => {
     handleClearCanvas();
     setPaperStickers([]);
     setPlacedStickers([]);
+    setSelectedStickerId(null);
+    setCustomBgColor(null);
+    setPaperStyle('parchment');
+    try {
+      localStorage.removeItem(getDraftStorageKey(user?.id));
+    } catch (e) {}
     setLastStickerToast(null);
     setIsCreating(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -611,6 +755,12 @@ export const SelfLettersView: React.FC = () => {
     handleClearCanvas();
     setPaperStickers([]);
     setPlacedStickers([]);
+    setSelectedStickerId(null);
+    setCustomBgColor(null);
+    setPaperStyle('parchment');
+    try {
+      localStorage.removeItem(getDraftStorageKey(user?.id));
+    } catch (e) {}
     setLastStickerToast(null);
     setFormError(null);
   };
@@ -630,12 +780,52 @@ export const SelfLettersView: React.FC = () => {
     setSubmitting(true);
     setFormError(null);
 
-    try {
-      let drawingDataUrl: string | null = null;
-      if (hasDrawingStrokes && canvasRef.current) {
-        drawingDataUrl = canvasRef.current.toDataURL();
-      }
+    let drawingDataUrl: string | null = null;
+    if (hasDrawingStrokes && canvasRef.current) {
+      drawingDataUrl = canvasRef.current.toDataURL();
+    }
 
+    // 1. SAVE PERSISTENCE TO LOCALSTORAGE IMMEDIATELY
+    const tempId = `self_ltr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const targetOpenDate = openDate || new Date().toISOString().split('T')[0];
+    const isLocked = new Date(targetOpenDate) > new Date();
+    const daysRemaining = Math.max(0, Math.ceil((new Date(targetOpenDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+
+    const newLetterRecord: SelfLetterRecord = {
+      id: tempId,
+      sender_id: user?.id,
+      sender_name: senderName.trim() || 'Tôi của hôm nay',
+      receiver_name: receiverName.trim() || 'Tôi của ngày mai',
+      title: title.trim(),
+      content: content.trim(),
+      paper_style: paperStyle,
+      theme_color: customBgColor || undefined,
+      ink_color: inkColor,
+      font_family: fontFamily,
+      drawing_data: drawingDataUrl,
+      open_date: targetOpenDate,
+      wax_seal: waxSeal,
+      stickers_data: placedStickers.length > 0 ? JSON.stringify(placedStickers) : undefined,
+      created_at: new Date().toISOString(),
+      is_opened: false,
+      opened_at: null
+    };
+
+    // Save to localStorage under current account userId
+    const currentStored = loadStoredLetters(user?.id);
+    const updatedStored = [newLetterRecord, ...currentStored.filter(l => l.id !== tempId)];
+    saveStoredLetters(user?.id, updatedStored);
+
+    // Clear draft from localStorage
+    try {
+      localStorage.removeItem(getDraftStorageKey(user?.id));
+    } catch (e) {}
+
+    // Update React state immediately so the envelope appears in mailbox
+    setLetters(prev => [recordToSummary(newLetterRecord), ...prev.filter(l => l.id !== tempId)]);
+
+    // 2. CONCURRENT SERVER POST
+    try {
       const res = await fetch('/api/letters', {
         method: 'POST',
         headers: {
@@ -643,38 +833,43 @@ export const SelfLettersView: React.FC = () => {
           ...(token ? { Authorization: token } : {})
         },
         body: JSON.stringify({
-          title: title.trim(),
-          content: content.trim(),
-          sender_name: senderName.trim() || 'Tôi của hôm nay',
-          receiver_name: receiverName.trim() || 'Tôi của ngày mai',
-          paper_style: paperStyle,
-          ink_color: inkColor,
-          font_family: fontFamily,
-          drawing_data: drawingDataUrl,
-          open_date: openDate,
-          wax_seal: waxSeal,
-          stickers_data: placedStickers.length > 0 ? JSON.stringify(placedStickers) : undefined,
-          theme_color: customBgColor || undefined
+          title: newLetterRecord.title,
+          content: newLetterRecord.content,
+          sender_name: newLetterRecord.sender_name,
+          receiver_name: newLetterRecord.receiver_name,
+          paper_style: newLetterRecord.paper_style,
+          ink_color: newLetterRecord.ink_color,
+          font_family: newLetterRecord.font_family,
+          drawing_data: newLetterRecord.drawing_data,
+          open_date: newLetterRecord.open_date,
+          wax_seal: newLetterRecord.wax_seal,
+          stickers_data: newLetterRecord.stickers_data,
+          theme_color: newLetterRecord.theme_color
         })
       });
 
       const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Không thể niêm phong bức thư lúc này.');
+      if (res.ok && data?.success && data?.letter?.id) {
+        // Sync server-assigned ID into localStorage and state
+        const serverId = data.letter.id;
+        newLetterRecord.id = serverId;
+        const reSynced = [newLetterRecord, ...currentStored.filter(l => l.id !== tempId && l.id !== serverId)];
+        saveStoredLetters(user?.id, reSynced);
+        setLetters(prev => [recordToSummary(newLetterRecord), ...prev.filter(l => l.id !== tempId && l.id !== serverId)]);
       }
-
+    } catch (err: unknown) {
+      console.warn('Network sync warning (data is safely persisted locally):', err);
+    } finally {
       // Reset clean slate
       setTitle('');
       setContent('');
       handleClearCanvas();
       setPlacedStickers([]);
       setPaperStickers([]);
+      setSelectedStickerId(null);
+      setCustomBgColor(null);
+      setPaperStyle('parchment');
       setIsCreating(false);
-      await fetchSummaries();
-    } catch (err: unknown) {
-      const errorObj = err as Error;
-      setFormError(errorObj.message || 'Đã có lỗi xảy ra khi niêm phong bức thư.');
-    } finally {
       setSubmitting(false);
     }
   };
@@ -682,23 +877,24 @@ export const SelfLettersView: React.FC = () => {
   // ================= DELETE LETTER =================
   const handleDeleteLetter = async (id: string) => {
     setDeleting(true);
+    // Remove from localStorage
+    const localRecords = loadStoredLetters(user?.id);
+    saveStoredLetters(user?.id, localRecords.filter(l => l.id !== id));
+    setLetters(prev => prev.filter(l => l.id !== id));
+    setDeleteConfirmId(null);
+    if (selectedLetterId === id) {
+      handleCloseReader();
+    }
+
     try {
-      const res = await fetch(`/api/letters/${id}`, {
+      await fetch(`/api/letters/${id}`, {
         method: 'DELETE',
         headers: {
           ...(token ? { Authorization: token } : {})
         }
       });
-      const data = await res.json();
-      if (data.success) {
-        setDeleteConfirmId(null);
-        if (selectedLetterId === id) {
-          handleCloseReader();
-        }
-        await fetchSummaries();
-      }
     } catch (err) {
-      console.error('Error deleting letter:', err);
+      console.error('Error deleting letter on server:', err);
     } finally {
       setDeleting(false);
     }
@@ -725,6 +921,17 @@ export const SelfLettersView: React.FC = () => {
     setReadingLoading(true);
     setUnfoldingStep('closed');
 
+    // 1. Check localStorage first for instant reading
+    const localRecords = loadStoredLetters(user?.id);
+    const localMatch = localRecords.find(l => l.id === letterSummary.id);
+    if (localMatch) {
+      setViewingLetter(localMatch);
+      setUnfoldingStep('flap_opening');
+      setTimeout(() => setUnfoldingStep('paper_sliding'), 450);
+      setTimeout(() => setUnfoldingStep('open'), 950);
+    }
+
+    // 2. Sync with server for full details and mark as opened
     try {
       const res = await fetch(`/api/letters/${letterSummary.id}`);
       const data = await res.json();
@@ -745,20 +952,14 @@ export const SelfLettersView: React.FC = () => {
 
       if (data.success && data.letter) {
         setViewingLetter(data.letter);
-
-        // Sequence of slow gentle unfolding
-        setUnfoldingStep('flap_opening');
-        setTimeout(() => {
-          setUnfoldingStep('paper_sliding');
-        }, 500);
-        setTimeout(() => {
-          setUnfoldingStep('open');
-        }, 1100);
-
-        fetchSummaries();
+        if (!localMatch) {
+          setUnfoldingStep('flap_opening');
+          setTimeout(() => setUnfoldingStep('paper_sliding'), 450);
+          setTimeout(() => setUnfoldingStep('open'), 950);
+        }
       }
     } catch (err) {
-      console.error('Error opening letter:', err);
+      console.warn('Using local letter record:', err);
     } finally {
       setReadingLoading(false);
     }
@@ -1057,7 +1258,7 @@ export const SelfLettersView: React.FC = () => {
                   <div className="flex items-center flex-wrap gap-1.5">
                     {(['kraft', 'rose', 'sky', 'lavender', 'matcha', 'warm_ivory', 'parchment', 'butter'] as PaperStyle[]).map(ps => {
                       const pConfig = PAPER_THEMES[ps] || PAPER_THEMES.parchment;
-                      const isSelected = paperStyle === ps;
+                      const isSelected = paperStyle === ps && !customBgColor;
                       return (
                         <button
                           key={ps}
@@ -1084,6 +1285,67 @@ export const SelfLettersView: React.FC = () => {
                         </button>
                       );
                     })}
+
+                    {/* Native <input type="color"> Custom HEX Picker Swatch */}
+                    <div className="relative group flex items-center">
+                      <label
+                        htmlFor="quick-native-color-picker"
+                        title="Tự do chọn bất kỳ mã màu HEX nào cho nền thư"
+                        style={{ backgroundColor: customBgColor || '#FAF3E0' }}
+                        className={`w-7 h-7 rounded-full border transition-all duration-300 transform hover:scale-115 active:scale-95 flex items-center justify-center cursor-pointer shadow-2xs relative overflow-hidden ${
+                          paperStyle === 'custom' || !!customBgColor
+                            ? 'ring-2 ring-offset-2 ring-[#8C5A4B] scale-110 border-[#8C5A4B] z-10'
+                            : 'border-[#D9CBB9] hover:border-[#8C7365]'
+                        }`}
+                      >
+                        <input
+                          id="quick-native-color-picker"
+                          type="color"
+                          value={customBgColor || '#FAF3E0'}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setPaperStyle('custom');
+                            setCustomBgColor(val);
+                          }}
+                          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full p-0 border-0"
+                        />
+                        {paperStyle === 'custom' || customBgColor ? (
+                          <Check className={`w-3.5 h-3.5 ${isColorDark(customBgColor || '#FAF3E0') ? 'text-white' : 'text-[#3B2A1E]'}`} />
+                        ) : (
+                          <Pipette className="w-3.5 h-3.5 text-[#8C5A4B]" />
+                        )}
+                      </label>
+                      <span className="absolute -bottom-7 left-1/2 -translate-x-1/2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity bg-[#2A1F18] text-[#F7F2E8] text-[10px] px-2 py-0.5 rounded-md whitespace-nowrap z-30 shadow-md font-sans">
+                        Tự chọn mã HEX
+                      </span>
+                    </div>
+
+                    {/* Direct HEX Code Input */}
+                    <div className="flex items-center gap-1 bg-white border border-[#D9CBB9] rounded-xl px-2 py-1 focus-within:border-[#8C5A4B] focus-within:ring-1 focus-within:ring-[#8C5A4B] transition-all shadow-2xs">
+                      <span className="text-xs text-[#8C6D58] font-mono select-none">#</span>
+                      <input
+                        type="text"
+                        maxLength={6}
+                        placeholder="FAF3E0"
+                        value={customBgColor ? customBgColor.replace('#', '') : ''}
+                        onChange={(e) => {
+                          const val = e.target.value.trim().replace('#', '');
+                          if (val.length <= 6) {
+                            if (val.length === 6 || val.length === 3) {
+                              setPaperStyle('custom');
+                              setCustomBgColor(`#${val}`);
+                            } else if (val.length === 0) {
+                              setCustomBgColor(null);
+                              setPaperStyle('parchment');
+                            } else {
+                              setCustomBgColor(`#${val}`);
+                            }
+                          }
+                        }}
+                        className="w-14 text-xs font-mono text-[#3B2A1E] outline-none bg-transparent uppercase"
+                        title="Gõ hoặc dán mã màu HEX tùy ý (ví dụ: FFE4E1)"
+                      />
+                    </div>
                   </div>
 
                   {/* Button to toggle advanced color picker */}
@@ -1178,6 +1440,8 @@ export const SelfLettersView: React.FC = () => {
                   stickers={placedStickers}
                   onUpdateStickers={setPlacedStickers}
                   isReadOnly={isDrawingMode}
+                  selectedId={selectedStickerId}
+                  onSelectId={setSelectedStickerId}
                 />
 
                 {/* Hand-Drawing Overlay Canvas */}

@@ -18,6 +18,7 @@ import { FriendsView } from './components/FriendsView';
 import { EmotionPlantView } from './components/plant/EmotionPlantView';
 import { SelfLettersView } from './components/letters/SelfLettersView';
 import { FloatingChatbotWidget } from './components/FloatingChatbotWidget';
+import { FastMathGame } from './components/FastMathGame';
 import { BotMascot } from './components/BotMascot';
 import { Footer } from './components/Footer';
 import { getDailyJournalQuote } from './data/journalData';
@@ -626,11 +627,14 @@ function AppContent() {
         {currentTab === 'letters' && <SelfLettersView />}
       </main>
 
-      {/* Floating Chatbot Widget for all other pages */}
+      {/* Floating Chatbot Widget for all other pages (Bottom Right) */}
       <FloatingChatbotWidget
         onOpenFullChat={() => setCurrentTab('chatbot')}
         isFullChatActive={currentTab === 'chatbot'}
       />
+
+      {/* Floating Mini Game: 🧠 Phép tính nhanh (Bottom Left) */}
+      <FastMathGame />
 
       {/* Create Confession Modal */}
       <CreateConfessionModal

@@ -1387,6 +1387,45 @@ app.put('/api/plant/my/permissions', requireAuth, (req, res) => {
   }
 });
 
+// Fast Math Best Score APIs
+app.get('/api/user/fast-math-best', (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      return res.json({ success: true, bestScore: 0 });
+    }
+    const user = db.getUserByToken(authHeader);
+    if (!user) {
+      return res.json({ success: true, bestScore: 0 });
+    }
+    const bestScore = db.getUserFastMathBest(user.id);
+    res.json({ success: true, bestScore });
+  } catch (error) {
+    console.error('Error in GET /api/user/fast-math-best:', error);
+    res.status(500).json({ success: false, bestScore: 0 });
+  }
+});
+
+app.post('/api/user/fast-math-best', (req, res) => {
+  try {
+    const { bestScore } = req.body;
+    const scoreNum = Number(bestScore) || 0;
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      return res.json({ success: true, bestScore: scoreNum });
+    }
+    const user = db.getUserByToken(authHeader);
+    if (!user) {
+      return res.json({ success: true, bestScore: scoreNum });
+    }
+    const updated = db.updateUserFastMathBest(user.id, scoreNum);
+    res.json({ success: true, bestScore: updated });
+  } catch (error) {
+    console.error('Error in POST /api/user/fast-math-best:', error);
+    res.status(500).json({ success: false, error: 'Lỗi lưu điểm.' });
+  }
+});
+
 // API health endpoint
 app.get('/api/health', (req, res) => {
   res.json({

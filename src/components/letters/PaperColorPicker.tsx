@@ -24,6 +24,15 @@ export const PaperColorPicker: React.FC<PaperColorPickerProps> = ({
 }) => {
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [customHexInput, setCustomHexInput] = useState<string>(customBgColor || '#FAF3E0');
+  const [rawText, setRawText] = useState<string>((customBgColor || '#FAF3E0').replace('#', ''));
+
+  // Sync if customBgColor changes from outside
+  React.useEffect(() => {
+    if (customBgColor) {
+      setCustomHexInput(customBgColor);
+      setRawText(customBgColor.replace('#', ''));
+    }
+  }, [customBgColor]);
 
   const themesList = Object.values(PAPER_THEMES);
 
@@ -36,9 +45,20 @@ export const PaperColorPicker: React.FC<PaperColorPickerProps> = ({
   const handleApplyCustomHex = (hex: string) => {
     let clean = hex.trim();
     if (!clean.startsWith('#')) clean = `#${clean}`;
-    if (/^#[0-9A-Fa-f]{6}$/.test(clean)) {
-      setCustomHexInput(clean);
+    setCustomHexInput(clean);
+    setRawText(clean.replace('#', ''));
+    if (/^#[0-9A-Fa-f]{6}$/.test(clean) || /^#[0-9A-Fa-f]{3}$/.test(clean)) {
       onSelectPaperStyle('custom', clean);
+    }
+  };
+
+  const handleRawTextChange = (val: string) => {
+    const clean = val.replace('#', '').trim();
+    setRawText(clean);
+    if (clean.length === 6 || clean.length === 3) {
+      const full = `#${clean}`;
+      setCustomHexInput(full);
+      onSelectPaperStyle('custom', full);
     }
   };
 
@@ -204,9 +224,9 @@ export const PaperColorPicker: React.FC<PaperColorPickerProps> = ({
                 </span>
                 <input
                   type="text"
-                  value={customHexInput.replace('#', '')}
+                  value={rawText}
                   maxLength={6}
-                  onChange={e => handleApplyCustomHex(`#${e.target.value}`)}
+                  onChange={e => handleRawTextChange(e.target.value)}
                   placeholder="FAF3E0"
                   className="w-full pl-6 pr-3 py-1.5 text-xs font-mono rounded-lg bg-[#FAF7F2] border border-[#8C6D58]/20 text-[#2A1F18] uppercase focus:outline-none focus:ring-1 focus:ring-[#8C5A4B]"
                 />
@@ -214,8 +234,8 @@ export const PaperColorPicker: React.FC<PaperColorPickerProps> = ({
 
               <button
                 type="button"
-                onClick={() => handleApplyCustomHex(customHexInput)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-serif transition-colors whitespace-nowrap ${
+                onClick={() => handleApplyCustomHex(rawText)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-serif transition-colors whitespace-nowrap cursor-pointer ${
                   currentPaperStyle === 'custom'
                     ? 'bg-[#8C5A4B] text-white shadow-xs'
                     : 'bg-[#F2ECE1] hover:bg-[#E8DFC9] text-[#4A382A]'

@@ -19,6 +19,7 @@ export interface UserRecord {
   last_active: string;
   blocked_user_ids: string[];
   advice_history?: UserAdviceEntry[];
+  fast_math_best_score?: number;
 }
 
 export interface FriendRequestRecord {
@@ -525,6 +526,25 @@ class Database {
     user.last_active = new Date().toISOString();
     this.scheduleSave();
     return user;
+  }
+
+  // Fast Math Best Score
+  public getUserFastMathBest(userId: string): number {
+    const user = this.data.users[userId];
+    return user?.fast_math_best_score || 0;
+  }
+
+  public updateUserFastMathBest(userId: string, score: number): number {
+    const user = this.data.users[userId];
+    if (!user) return score;
+    const currentBest = user.fast_math_best_score || 0;
+    if (score > currentBest) {
+      user.fast_math_best_score = score;
+      user.last_active = new Date().toISOString();
+      this.scheduleSave();
+      return score;
+    }
+    return currentBest;
   }
 
   // Get or assign daily advice for user (persisted by Account ID & date, without repetition)
