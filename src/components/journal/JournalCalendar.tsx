@@ -1,7 +1,8 @@
 import React from 'react';
 import { JournalEntry } from '../../types';
-import { ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Sparkles, Lock } from 'lucide-react';
 import { hasJournalDraft, getJournalCalendarSubtitle } from '../../data/journalData';
+import { isJournalLocked } from '../../utils/journalTimeLock';
 
 interface JournalCalendarProps {
   currentMonth: Date;
@@ -143,8 +144,9 @@ export const JournalCalendar: React.FC<JournalCalendarProps> = ({
           const dayNumber = idx + 1;
           const dateStr = formatDateString(year, month, dayNumber);
           const entry = entryMap.get(dateStr);
+          const isLocked = entry ? isJournalLocked(entry) : false;
           const hasDraft = !entry && hasJournalDraft(dateStr);
-          const hasFutureMessage = !!(entry?.readLaterDate);
+          const hasFutureMessage = !!(entry?.unlockDate || entry?.readLaterDate);
           const isSelected = selectedDate === dateStr;
           const isToday = today === dateStr;
 
@@ -155,6 +157,8 @@ export const JournalCalendar: React.FC<JournalCalendarProps> = ({
               className={`h-14 sm:h-20 p-1.5 sm:p-2 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between relative group cursor-pointer ${
                 isSelected
                   ? 'bg-slate-900 text-white border-slate-900 shadow-md scale-102 z-10'
+                  : isLocked
+                  ? 'bg-amber-50/70 hover:bg-amber-100/80 border-amber-200/90 text-amber-950'
                   : entry
                   ? 'bg-stone-50/90 hover:bg-stone-100 border-stone-200/90 text-slate-800'
                   : hasDraft
@@ -170,6 +174,8 @@ export const JournalCalendar: React.FC<JournalCalendarProps> = ({
                   className={`text-xs font-bold leading-none ${
                     isSelected
                       ? 'text-white'
+                      : isLocked
+                      ? 'text-amber-900 font-extrabold'
                       : isToday
                       ? 'text-rose-600 font-black'
                       : 'text-slate-700'
@@ -179,8 +185,18 @@ export const JournalCalendar: React.FC<JournalCalendarProps> = ({
                 </span>
 
                 <div className="flex items-center gap-1">
+                  {/* Time-locked icon */}
+                  {isLocked && !isSelected && (
+                    <span 
+                      className="text-[10px] select-none text-amber-700" 
+                      title={`Đang bị khóa đến ${entry?.unlockDate || entry?.readLaterDate}`}
+                    >
+                      🔒
+                    </span>
+                  )}
+
                   {/* Future capsule / letter indicator 🌱 */}
-                  {hasFutureMessage && (
+                  {!isLocked && hasFutureMessage && (
                     <span 
                       className="text-[11px] select-none" 
                       title="Có thư gửi cho tương lai"
@@ -211,7 +227,12 @@ export const JournalCalendar: React.FC<JournalCalendarProps> = ({
                 {entry ? (
                   <div className="flex items-center gap-1">
                     {/* Small mood badge */}
-                    {entry.mood ? (
+                    {isLocked ? (
+                      <span className="text-xs font-bold text-amber-800 flex items-center gap-0.5">
+                        <Lock className="w-3 h-3 text-amber-700" />
+                        <span className="hidden sm:inline text-[10px]">Đang khóa</span>
+                      </span>
+                    ) : entry.mood ? (
                       <span className="text-sm sm:text-base leading-none select-none">
                         {entry.mood}
                       </span>

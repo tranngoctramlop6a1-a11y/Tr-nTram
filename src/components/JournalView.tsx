@@ -13,12 +13,21 @@ import { JournalEditorModal } from './journal/JournalEditorModal';
 import { JournalTimeCapsule } from './journal/JournalTimeCapsule';
 import { JournalReflections } from './journal/JournalReflections';
 import { JournalPinModal } from './journal/JournalPinModal';
+import { JournalTimeLockModal } from './journal/JournalTimeLockModal';
+import { 
+  isJournalLocked, 
+  formatUnlockDateLabel, 
+  formatRemainingTimeText,
+  getRemainingDays 
+} from '../utils/journalTimeLock';
 import { 
   Calendar as CalendarIcon, 
   BookOpen, 
   Mail, 
   Sparkles, 
   Lock, 
+  Unlock,
+  KeyRound,
   Search, 
   Download, 
   Trash2, 
@@ -29,7 +38,8 @@ import {
   BellRing,
   Smile,
   Tag,
-  CloudCheck
+  CloudCheck,
+  Clock
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -222,6 +232,32 @@ export const JournalView: React.FC<JournalViewProps> = ({
   const [selectedDate, setSelectedDate] = useState<string>(preselectedDate || todayStr);
   const [isEditorOpen, setIsEditorOpen] = useState<boolean>(!!preselectedDate || !!initialPromptText);
 
+  // Time-locked Diary Modal & Filter states
+  const [timeLockedEntry, setTimeLockedEntry] = useState<JournalEntry | null>(null);
+  const [isTimeLockModalOpen, setIsTimeLockModalOpen] = useState<boolean>(false);
+  const [lockStatusFilter, setLockStatusFilter] = useState<'all' | 'locked' | 'unlocked'>('all');
+
+  // Handle entry card click - opens lock modal if locked, otherwise opens editor
+  const handleEntryCardClick = (entry: JournalEntry) => {
+    if (isJournalLocked(entry)) {
+      setTimeLockedEntry(entry);
+      setIsTimeLockModalOpen(true);
+      return;
+    }
+    handleOpenDate(entry.date);
+  };
+
+  // Handle calendar day selection - checks if locked
+  const handleCalendarSelectDate = (dateStr: string) => {
+    const entry = entries.find((e) => e.date === dateStr);
+    if (entry && isJournalLocked(entry)) {
+      setTimeLockedEntry(entry);
+      setIsTimeLockModalOpen(true);
+      return;
+    }
+    handleOpenDate(dateStr);
+  };
+
   // Search & Filter state for Timeline view
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMonthFilter, setSelectedMonthFilter] = useState<string | null>(null);
@@ -324,7 +360,7 @@ export const JournalView: React.FC<JournalViewProps> = ({
     setShowClearConfirm(false);
   };
 
-  // Filtered entries for Timeline
+  // Filtered entries for Timeline / Đọc lại
   const filteredEntries = useMemo(() => {
     return entries.filter((e) => {
       if (searchQuery.trim()) {
@@ -337,9 +373,11 @@ export const JournalView: React.FC<JournalViewProps> = ({
       if (selectedMonthFilter && !e.date.startsWith(selectedMonthFilter)) return false;
       if (selectedMoodFilter && e.mood !== selectedMoodFilter) return false;
       if (selectedTagFilter && !e.tags?.includes(selectedTagFilter)) return false;
+      if (lockStatusFilter === 'locked' && !isJournalLocked(e)) return false;
+      if (lockStatusFilter === 'unlocked' && isJournalLocked(e)) return false;
       return true;
     }).sort((a, b) => b.date.localeCompare(a.date));
-  }, [entries, searchQuery, selectedMonthFilter, selectedMoodFilter, selectedTagFilter]);
+  }, [entries, searchQuery, selectedMonthFilter, selectedMoodFilter, selectedTagFilter, lockStatusFilter]);
 
   // Section 10: Group entries by Month (e.g. September 2026, August 2026)
   const groupedTimelineByMonth = useMemo(() => {
@@ -588,8 +626,8 @@ export const JournalView: React.FC<JournalViewProps> = ({
       <div className="flex items-center justify-between border-b border-rose-100 pb-2">
         <div className="flex items-center gap-2 sm:gap-3 overflow-x-auto pb-1 max-w-full">
           {[
+            { id: 'timeline', label: '📖 Đọc lại nhật ký' },
             { id: 'calendar', label: '🗓️ Lịch nhật ký' },
-            { id: 'timeline', label: '📚 Những ngày đã đi qua' },
             { id: 'capsule', label: '💌 Gửi tương lai' },
             { id: 'reflection', label: '🪞 Nhìn lại & Kỷ niệm' }
           ].map((tab) => (
@@ -618,8 +656,8 @@ export const JournalView: React.FC<JournalViewProps> = ({
             onMonthChange={setCurrentCalendarMonth}
             entries={entries}
             selectedDate={selectedDate}
-            onSelectDate={handleOpenDate}
-            onOpenToday={() => handleOpenDate(todayStr)}
+            onSelectDate={handleCalendarSelectDate}
+            onOpenToday={() => handleCalendarSelectDate(todayStr)}
           />
 
           {/* Quick instructions reassurance */}
@@ -635,16 +673,60 @@ export const JournalView: React.FC<JournalViewProps> = ({
         </div>
       )}
 
-      {/* VIEW B: Những ngày đã đi qua (Section 10) */}
+      {/* VIEW B: Đọc lại nhật ký & Future Diary */}
       {activeSubTab === 'timeline' && (
         <div className="space-y-6">
           
           {/* Header title */}
-          <div className="flex items-center justify-between">
-            <h3 className="text-xl sm:text-2xl font-black text-stone-900 flex items-center gap-2">
-              <span>📚 Những ngày đã đi qua</span>
-              <span className="text-xs font-bold text-stone-400">({filteredEntries.length} trang)</span>
-            </h3>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-xl sm:text-2xl font-black text-stone-900 flex items-center gap-2">
+                <span>📖 Đọc lại nhật ký</span>
+                <span className="text-xs font-bold text-stone-400">({filteredEntries.length} trang)</span>
+              </h3>
+              <p className="text-xs text-stone-500 font-medium">
+                Những trang nhật ký đã qua và các trang hẹn giờ mở lại (Time-locked Diary) cho tương lai.
+              </p>
+            </div>
+
+            {/* Quick Lock Filter Pills */}
+            <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-stone-100 border border-stone-200/80 text-xs shrink-0 self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={() => setLockStatusFilter('all')}
+                className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+                  lockStatusFilter === 'all'
+                    ? 'bg-white text-stone-900 shadow-2xs'
+                    : 'text-stone-600 hover:text-stone-900'
+                }`}
+              >
+                Tất cả
+              </button>
+              <button
+                type="button"
+                onClick={() => setLockStatusFilter('locked')}
+                className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  lockStatusFilter === 'locked'
+                    ? 'bg-amber-700 text-white shadow-2xs'
+                    : 'text-amber-800 hover:text-amber-950'
+                }`}
+              >
+                <Lock className="w-3 h-3" />
+                <span>Đang bị khóa</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setLockStatusFilter('unlocked')}
+                className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  lockStatusFilter === 'unlocked'
+                    ? 'bg-stone-900 text-white shadow-2xs'
+                    : 'text-stone-600 hover:text-stone-900'
+                }`}
+              >
+                <Unlock className="w-3 h-3" />
+                <span>Đã mở khóa</span>
+              </button>
+            </div>
           </div>
 
           {/* Search & Filter Toolbar */}
@@ -789,11 +871,79 @@ export const JournalView: React.FC<JournalViewProps> = ({
                     const dateObj = new Date(item.date);
                     const dayNum = String(dateObj.getDate()).padStart(2, '0');
                     const englishWeekday = dateObj.toLocaleDateString('en-US', { weekday: 'long' });
+                    const isLocked = isJournalLocked(item);
+                    const effectiveUnlock = item.unlockDate || item.readLaterDate;
 
+                    if (isLocked) {
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() => handleEntryCardClick(item)}
+                          className="p-5 rounded-3xl bg-amber-50/50 hover:bg-amber-100/60 border border-amber-200/90 shadow-2xs hover:shadow-xs transition-all cursor-pointer flex flex-col justify-between space-y-3 group relative overflow-hidden"
+                          title="Trang nhật ký đang bị khóa hẹn giờ. Bấm để xem mốc thời gian hoặc mở khóa."
+                        >
+                          <div className="space-y-2.5">
+                            {/* Day & Weekday + Locked Status badge */}
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-black text-amber-950 group-hover:text-amber-900 transition-colors">
+                                {dayNum} · {englishWeekday}
+                              </span>
+                              <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300 font-bold text-[11px] flex items-center gap-1 shadow-2xs">
+                                <Lock className="w-3 h-3 text-amber-700" />
+                                <span>Đang bị khóa</span>
+                              </span>
+                            </div>
+
+                            {/* Locked Title Placeholder */}
+                            <div className="font-extrabold text-sm text-amber-950 flex items-center gap-1.5">
+                              <span>🔒</span>
+                              <span className="line-clamp-1">
+                                {item.title ? 'Bài viết niêm phong hẹn giờ' : 'Trang nhật ký gửi tương lai'}
+                              </span>
+                            </div>
+
+                            {/* Unlock target and blurred content */}
+                            <div className="space-y-2 py-0.5">
+                              <div className="p-2.5 rounded-2xl bg-white/90 border border-amber-200 text-amber-950 text-[11px] space-y-0.5 shadow-2xs">
+                                <div className="font-bold flex items-center gap-1 text-amber-900">
+                                  <span>⏳ Mở khóa vào:</span>
+                                  <span className="text-amber-950 font-extrabold">{formatUnlockDateLabel(effectiveUnlock!)}</span>
+                                </div>
+                                <div className="text-amber-700 font-semibold text-[10px]">
+                                  {formatRemainingTimeText(effectiveUnlock!)}
+                                </div>
+                              </div>
+
+                              {/* Blurred preview to hide confidential details until unlocked */}
+                              <div className="relative overflow-hidden rounded-xl p-1 bg-amber-50/30">
+                                <p className="text-xs text-stone-400 select-none filter blur-[3.5px] leading-relaxed line-clamp-2 pointer-events-none opacity-60">
+                                  Hôm nay mình có những dòng suy nghĩ muốn gửi lại cho bản thân ngày sau. Khi thời gian trôi qua đến đúng ngày hẹn, trang này mới mở ra.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Footer with lock notice */}
+                          <div className="flex items-center justify-between gap-1 pt-2 border-t border-amber-200/60 text-[11px] text-amber-800 font-medium">
+                            <span className="flex items-center gap-1 text-amber-700 font-semibold">
+                              <Clock className="w-3 h-3" />
+                              <span>Hẹn giờ mở lại</span>
+                            </span>
+                            <span className="text-amber-900 font-bold group-hover:underline flex items-center gap-0.5">
+                              <span>Bấm để xem</span>
+                              <span className="text-xs">›</span>
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    // Regular / Unlocked entry
+                    const wasTimeLocked = !!effectiveUnlock;
                     return (
                       <div
                         key={item.id}
-                        onClick={() => handleOpenDate(item.date)}
+                        onClick={() => handleEntryCardClick(item)}
                         className="p-5 rounded-3xl bg-white hover:bg-stone-50/80 border border-stone-200/90 shadow-2xs hover:shadow-xs transition-all cursor-pointer flex flex-col justify-between space-y-3 group"
                       >
                         <div className="space-y-2">
@@ -802,9 +952,20 @@ export const JournalView: React.FC<JournalViewProps> = ({
                             <span className="text-xs font-black text-stone-600 group-hover:text-stone-900 transition-colors">
                               {dayNum} · {englishWeekday}
                             </span>
-                            <span className="text-xl group-hover:scale-110 transition-transform">
-                              {item.mood || '📝'}
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              {wasTimeLocked && (
+                                <span 
+                                  className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold flex items-center gap-1"
+                                  title={`Đã đến hạn mở khóa (${formatUnlockDateLabel(effectiveUnlock)})`}
+                                >
+                                  <Unlock className="w-2.5 h-2.5" />
+                                  <span>Đã mở</span>
+                                </span>
+                              )}
+                              <span className="text-xl group-hover:scale-110 transition-transform">
+                                {item.mood || '📝'}
+                              </span>
+                            </div>
                           </div>
 
                           {item.title && (
@@ -866,6 +1027,25 @@ export const JournalView: React.FC<JournalViewProps> = ({
         onDeleteEntry={handleDeleteEntry}
         onAskChatbotWithText={onAskChatbotWithText}
       />
+
+      {/* Time-locked Diary Modal */}
+      {timeLockedEntry && (
+        <JournalTimeLockModal
+          isOpen={isTimeLockModalOpen}
+          onClose={() => {
+            setIsTimeLockModalOpen(false);
+            setTimeLockedEntry(null);
+          }}
+          entry={timeLockedEntry}
+          savedPin={pin}
+          onUnlockSuccess={() => {
+            const entryToOpen = timeLockedEntry;
+            setIsTimeLockModalOpen(false);
+            setTimeLockedEntry(null);
+            handleOpenDate(entryToOpen.date);
+          }}
+        />
+      )}
 
       {/* PIN Security Modal */}
       <JournalPinModal

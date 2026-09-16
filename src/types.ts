@@ -127,6 +127,7 @@ export interface JournalEntry {
   stickers?: string[];
   theme?: JournalTheme;
   readLaterDate?: string; // 'YYYY-MM-DD'
+  unlockDate?: string; // 'YYYY-MM-DD' - Future Diary / Time-locked unlock date
   readLaterUnlocked?: boolean;
   reflectionNote?: string;
   reflectionDate?: string;
@@ -144,6 +145,7 @@ export interface JournalDraft {
   stickers?: string[];
   theme?: JournalTheme;
   readLaterDate?: string;
+  unlockDate?: string;
   reflectionNote?: string;
   isFavorite?: boolean;
   updatedAt: string;

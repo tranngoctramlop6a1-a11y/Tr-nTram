@@ -23,7 +23,9 @@ import {
   Smile,
   GraduationCap,
   AlertCircle,
-  RefreshCw
+  RefreshCw,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
 import { BotMascot } from './BotMascot';
 import { ChatMessage, SupportMode, BotMascotMood } from '../types';
@@ -39,8 +41,10 @@ import {
   sanitizeChatResponse 
 } from '../utils/antiRepetitionMemory';
 import { recordDiscussedTopic, unlockBadge } from '../utils/userExperienceStore';
+import { getGentleFallbackResponse } from '../utils/geminiChatFallback';
 
 interface ChatbotViewProps {
+  onClose?: () => void;
   onGoToHelp?: () => void;
   onGoToConfessions?: () => void;
   onGoToJournal?: (initialPromptText?: string) => void;
@@ -51,6 +55,7 @@ interface ChatbotViewProps {
     summaryText: string;
     mode?: string;
   } | null;
+  defaultFullscreen?: boolean;
 }
 
 const STORAGE_KEY = 'ban_oi_minh_noi_ne_chat_history';
@@ -153,7 +158,15 @@ export const classifyChatError = (error: any, responseStatus?: number): Classifi
   };
 };
 
-export const ChatbotView: React.FC<ChatbotViewProps> = ({ onGoToHelp, onGoToConfessions, onGoToJournal, checkinContext }) => {
+export const ChatbotView: React.FC<ChatbotViewProps> = ({ 
+  onClose,
+  onGoToHelp, 
+  onGoToConfessions, 
+  onGoToJournal, 
+  checkinContext,
+  defaultFullscreen = true
+}) => {
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(defaultFullscreen);
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -270,6 +283,25 @@ export const ChatbotView: React.FC<ChatbotViewProps> = ({ onGoToHelp, onGoToConf
     }, 100);
     return () => clearTimeout(timer);
   }, []);
+
+  // Handle ESC key for modals, fullscreen exit, or close
+  useEffect(() => {
+    const handleKeyDownEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (isTopicModalOpen) {
+          setIsTopicModalOpen(false);
+        } else if (showClearConfirm) {
+          setShowClearConfirm(false);
+        } else if (onClose) {
+          onClose();
+        } else {
+          setIsFullscreen(false);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDownEsc);
+    return () => window.removeEventListener('keydown', handleKeyDownEsc);
+  }, [isTopicModalOpen, showClearConfirm, onClose]);
 
   // Clean up abort controller on unmount
   useEffect(() => {
@@ -454,45 +486,28 @@ export const ChatbotView: React.FC<ChatbotViewProps> = ({ onGoToHelp, onGoToConf
       clearTimeout(timeoutTimer);
       clearTimeout(slowNoticeTimer);
 
-      if (!response.ok) {
-        let errData: any = null;
+      let replyText = '';
+
+      if (response.ok) {
         try {
-          errData = await response.json();
-        } catch {}
-        const classified = classifyChatError(null, response.status);
-        const errMsg = errData?.reply || classified.message;
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === targetUserMsgId
-              ? { ...m, status: 'error', errorType: classified.type, errorMessage: errMsg }
-              : m
-          )
-        );
-        if (isNearBottomRef.current) {
-          setTimeout(() => scrollChatToBottom(true), 50);
+          const data = await response.json();
+          replyText = data?.reply || '';
+        } catch {
+          replyText = '';
         }
-        return;
       }
 
-      const data = await response.json();
-      let replyText = data?.reply;
-
+      // If server returned non-200 or empty, or network fallback is needed:
       if (!replyText || typeof replyText !== 'string' || !replyText.trim()) {
-        const classified = classifyChatError(new Error('EMPTY_RESPONSE'));
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === targetUserMsgId
-              ? { ...m, status: 'error', errorType: classified.type, errorMessage: classified.message }
-              : m
-          )
+        replyText = getGentleFallbackResponse(
+          targetText,
+          mode,
+          selectedTopic || undefined,
+          messages.slice().reverse().find((m) => m.sender === 'bot')?.text
         );
-        if (isNearBottomRef.current) {
-          setTimeout(() => scrollChatToBottom(true), 50);
-        }
-        return;
       }
 
-      // Mark the user message as sent
+      // Always mark the user message as sent smoothly
       setMessages((prev) =>
         prev.map((m) =>
           m.id === targetUserMsgId
@@ -554,16 +569,35 @@ export const ChatbotView: React.FC<ChatbotViewProps> = ({ onGoToHelp, onGoToConf
         return;
       }
 
-      const isTimeout = abortCtrl.signal.reason === 'TIMEOUT' || error?.message === 'TIMEOUT';
-      const classified = classifyChatError(isTimeout ? new Error('TIMEOUT') : error);
+      // In case of network interruption, timeout or fetch failure:
+      // Smoothly fall back to an empathetic friend response instead of a jarring network error
+      const fallbackReply = getGentleFallbackResponse(
+        targetText,
+        mode,
+        selectedTopic || undefined,
+        messages.slice().reverse().find((m) => m.sender === 'bot')?.text
+      );
 
+      // Mark user message as sent
       setMessages((prev) =>
         prev.map((m) =>
           m.id === targetUserMsgId
-            ? { ...m, status: 'error', errorType: classified.type, errorMessage: classified.message }
+            ? { ...m, status: 'sent', errorMessage: undefined, errorType: undefined }
             : m
         )
       );
+
+      const botMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        sender: 'bot',
+        text: fallbackReply,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        supportMode: mode,
+        suggestModes: false,
+        status: 'sent'
+      };
+
+      setMessages((prev) => [...prev, botMsg]);
 
       if (isNearBottomRef.current) {
         setTimeout(() => scrollChatToBottom(true), 50);
@@ -664,8 +698,13 @@ export const ChatbotView: React.FC<ChatbotViewProps> = ({ onGoToHelp, onGoToConf
   );
 
   return (
-    <div className="w-full max-w-5xl mx-auto px-3 sm:px-6 py-2 sm:py-4 flex flex-col h-[calc(100dvh-5rem)] min-h-[580px] max-h-[960px]">
-      
+    <div
+      className={
+        isFullscreen
+          ? "fixed inset-0 z-50 flex flex-col bg-[#FAF8F5] text-stone-800 w-full h-full overflow-hidden animate-in fade-in duration-200"
+          : "w-full max-w-5xl mx-auto px-2 sm:px-4 py-2 sm:py-3 flex flex-col h-[calc(100dvh-5rem)] min-h-[580px] max-h-[960px] bg-[#FAF8F5] rounded-3xl border border-stone-200/90 shadow-xs overflow-hidden"
+      }
+    >
       {/* Top Banner / Privacy & Safe Reassurance */}
       <div className="bg-gradient-to-r from-rose-50 via-amber-50 to-emerald-50 rounded-3xl p-3 sm:p-4 border border-rose-100/90 shadow-xs mb-3 shrink-0">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
@@ -683,7 +722,7 @@ export const ChatbotView: React.FC<ChatbotViewProps> = ({ onGoToHelp, onGoToConf
                 </span>
               </div>
               <p className="text-xs sm:text-sm text-slate-600 font-medium">
-                “Có chuyện gì, cứ kể mình nghe.” 🌸
+                “Có chuyện gì, cứ kể mình nghe. Mình luôn ở đây.” 🌸
               </p>
             </div>
           </div>
@@ -721,8 +760,33 @@ export const ChatbotView: React.FC<ChatbotViewProps> = ({ onGoToHelp, onGoToConf
               title="Gọi Tổng đài Quốc gia Bảo vệ Trẻ em"
             >
               <PhoneCall className="w-3.5 h-3.5 animate-bounce" />
-              <span>Cấp cứu/Tư vấn: 111</span>
+              <span className="hidden sm:inline">Cấp cứu/Tư vấn: 111</span>
+              <span className="sm:hidden">111</span>
             </a>
+
+            {/* Fullscreen Toggle button */}
+            <button
+              id="btn-toggle-fullscreen-chat"
+              onClick={() => setIsFullscreen(!isFullscreen)}
+              className="px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+              title={isFullscreen ? "Thu nhỏ giao diện" : "Mở rộng toàn màn hình"}
+            >
+              {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+              <span className="hidden md:inline">{isFullscreen ? "Thu nhỏ" : "Toàn màn hình"}</span>
+            </button>
+
+            {/* Close Button */}
+            {onClose && (
+              <button
+                id="btn-close-fullscreen-chat"
+                onClick={onClose}
+                className="px-2.5 py-1.5 rounded-xl bg-rose-100/90 hover:bg-rose-200 text-rose-800 text-xs font-bold flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                title="Đóng khung chat (Esc)"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Đóng</span>
+              </button>
+            )}
           </div>
 
         </div>
@@ -859,15 +923,16 @@ export const ChatbotView: React.FC<ChatbotViewProps> = ({ onGoToHelp, onGoToConf
       )}
 
       {/* Main Chat Conversation Box */}
-      <div className="flex-1 min-h-0 bg-white/80 backdrop-blur-sm rounded-3xl border border-rose-100/90 shadow-xs flex flex-col overflow-hidden relative">
+      <div className={`flex-1 min-h-0 ${isFullscreen ? 'bg-[#FAF8F5]' : 'bg-white/80 backdrop-blur-sm rounded-3xl border border-rose-100/90 shadow-xs'} flex flex-col overflow-hidden relative`}>
         
         {/* Messages Container - Strictly scrolls inside container only */}
         <div
           id="chat-messages-container"
           ref={chatContainerRef}
           onScroll={handleChatContainerScroll}
-          className="chat-container flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-6 overscroll-contain"
+          className="chat-container flex-1 min-h-0 overflow-y-auto px-3 sm:px-6 py-4 sm:py-6 space-y-6 overscroll-contain relative scroll-smooth"
         >
+          <div className="max-w-4xl mx-auto w-full space-y-6">
           
           {/* Welcome Screen when conversation is empty */}
           {messages.length === 0 && (
@@ -1181,6 +1246,7 @@ export const ChatbotView: React.FC<ChatbotViewProps> = ({ onGoToHelp, onGoToConf
               </button>
             </div>
           )}
+          </div>
         </div>
 
         {/* Floating pill when user is reading older messages and a new message arrives */}
@@ -1204,106 +1270,113 @@ export const ChatbotView: React.FC<ChatbotViewProps> = ({ onGoToHelp, onGoToConf
         )}
 
         {/* Section 10: Input Area */}
-        <div className="p-3 sm:p-4 bg-white border-t border-rose-100/80">
+        <div className={`p-3 sm:p-4 shrink-0 ${isFullscreen ? 'bg-white/95 backdrop-blur-md border-t border-stone-200/90' : 'bg-white border-t border-rose-100/80'}`}>
+          <div className="max-w-4xl mx-auto w-full space-y-2.5">
           
-          {/* Quick interactive helpers when conversation is ongoing */}
-          {messages.length > 0 && !isThinking && (
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-2 scrollbar-none text-xs">
-              <span className="text-[11px] text-slate-500 font-semibold shrink-0">Gợi ý nhanh:</span>
-              <button
-                type="button"
-                onClick={() => handleSendMessage('Thôi, tự nhiên không muốn kể chuyện đó nữa.')}
-                className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 text-[11px] font-semibold shrink-0 border border-slate-200 transition-colors cursor-pointer"
-              >
-                🙅 Thôi không muốn kể
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSendMessage('Đố vui mình một câu nhẹ nhàng đi!')}
-                className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-amber-50 text-slate-600 hover:text-amber-800 text-[11px] font-semibold shrink-0 border border-slate-200 transition-colors cursor-pointer"
-              >
-                ✨ Đố vui một câu
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSendMessage('Hỏi mình một câu random question để đổi gió đi!')}
-                className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-teal-50 text-slate-600 hover:text-teal-800 text-[11px] font-semibold shrink-0 border border-slate-200 transition-colors cursor-pointer"
-              >
-                🎲 Random question
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSendMessage('Mình lười quá, cho mình thử bước 5 phút xem nào!')}
-                className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-800 text-[11px] font-semibold shrink-0 border border-slate-200 transition-colors cursor-pointer"
-              >
-                ⚡ Bước 5 phút lười học
-              </button>
-            </div>
-          )}
-
-          <div className="relative flex items-end gap-2 bg-[#FAF9F6] rounded-2xl p-2 border border-slate-200 focus-within:border-rose-400 focus-within:ring-2 focus-within:ring-rose-100 transition-all">
-            
-            {/* Voice Input Button: Section 10 ("🎤 Nói thay vì gõ") */}
-            <button
-              id="btn-chat-voice-input"
-              type="button"
-              onClick={toggleVoiceInput}
-              className={`p-2.5 rounded-xl transition-all cursor-pointer ${
-                isListeningVoice
-                  ? 'bg-rose-500 text-white animate-pulse'
-                  : 'text-slate-500 hover:text-rose-600 hover:bg-rose-50'
-              }`}
-              title={isListeningVoice ? 'Đang nghe... Bấm để dừng' : '🎤 Nói thay vì gõ'}
-            >
-              {isListeningVoice ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-            </button>
-
-            {/* Textarea */}
-            <textarea
-              id="chat-input-textarea"
-              ref={inputRef}
-              value={inputVal}
-              onChange={(e) => setInputVal(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Bạn muốn kể chuyện gì với mình?"
-              rows={1}
-              className="flex-1 max-h-32 min-h-[40px] py-2 px-1 bg-transparent text-slate-800 text-sm placeholder:text-slate-400 focus:outline-none resize-none leading-relaxed"
-            />
-
-            {/* Send Button: Section 10 ("➤") */}
-            <button
-              id="btn-chat-send-message"
-              type="button"
-              onClick={() => handleSendMessage()}
-              disabled={!inputVal.trim() || isThinking}
-              className={`p-2.5 rounded-xl font-bold transition-all duration-150 cursor-pointer ${
-                inputVal.trim() && !isThinking
-                  ? 'bg-gradient-to-r from-rose-500 to-amber-500 text-white shadow-xs hover:shadow-md transform active:scale-95'
-                  : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-              }`}
-              title="Gửi tin nhắn"
-            >
-              <Send className="w-4 h-4" />
-            </button>
-
-          </div>
-
-          {/* Privacy & Safe Note Under Input */}
-          <div className="flex items-center justify-between text-[11px] text-slate-600 mt-2 px-1">
-            <div className="flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Hoàn toàn ẩn danh • Không yêu cầu họ tên • Không phán xét</span>
-            </div>
-
-            {messages.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setShowClearConfirm(true)}
-                className="hover:text-rose-600 hover:underline cursor-pointer"
-              >
-                Bắt đầu phiên mới
-              </button>
+            {/* Quick interactive helpers when conversation is ongoing */}
+            {messages.length > 0 && !isThinking && (
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-xs">
+                <span className="text-[11px] text-stone-500 font-semibold shrink-0">Gợi ý nhanh:</span>
+                <button
+                  type="button"
+                  onClick={() => handleSendMessage('Thôi, tự nhiên không muốn kể chuyện đó nữa.')}
+                  className="px-2.5 py-1 rounded-xl bg-stone-100 hover:bg-rose-50 text-stone-700 hover:text-rose-700 text-[11px] font-semibold shrink-0 border border-stone-200 transition-colors cursor-pointer"
+                >
+                  🙅 Thôi không muốn kể
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSendMessage('Đố vui mình một câu nhẹ nhàng đi!')}
+                  className="px-2.5 py-1 rounded-xl bg-stone-100 hover:bg-amber-50 text-stone-700 hover:text-amber-800 text-[11px] font-semibold shrink-0 border border-stone-200 transition-colors cursor-pointer"
+                >
+                  ✨ Đố vui một câu
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSendMessage('Hỏi mình một câu random question để đổi gió đi!')}
+                  className="px-2.5 py-1 rounded-xl bg-stone-100 hover:bg-teal-50 text-stone-700 hover:text-teal-800 text-[11px] font-semibold shrink-0 border border-stone-200 transition-colors cursor-pointer"
+                >
+                  🎲 Random question
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSendMessage('Mình lười quá, cho mình thử bước 5 phút xem nào!')}
+                  className="px-2.5 py-1 rounded-xl bg-stone-100 hover:bg-blue-50 text-stone-700 hover:text-blue-800 text-[11px] font-semibold shrink-0 border border-stone-200 transition-colors cursor-pointer"
+                >
+                  ⚡ Bước 5 phút lười học
+                </button>
+              </div>
             )}
+
+            <div className="relative flex items-end gap-2 sm:gap-2.5 bg-[#FAF9F6] rounded-2xl sm:rounded-3xl p-2 sm:p-2.5 border border-stone-300 focus-within:border-amber-500 focus-within:ring-2 focus-within:ring-amber-200/60 transition-all">
+              
+              {/* Voice Input Button: Section 10 ("🎤 Nói thay vì gõ") */}
+              <button
+                id="btn-chat-voice-input"
+                type="button"
+                onClick={toggleVoiceInput}
+                className={`p-2.5 sm:p-3 rounded-2xl transition-all cursor-pointer ${
+                  isListeningVoice
+                    ? 'bg-rose-500 text-white animate-pulse'
+                    : 'text-stone-500 hover:text-rose-600 hover:bg-rose-50'
+                }`}
+                title={isListeningVoice ? 'Đang nghe... Bấm để dừng' : '🎤 Nói thay vì gõ'}
+              >
+                {isListeningVoice ? <MicOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <Mic className="w-4 h-4 sm:w-5 sm:h-5" />}
+              </button>
+
+              {/* Textarea */}
+              <textarea
+                id="chat-input-textarea"
+                ref={inputRef}
+                value={inputVal}
+                onChange={(e) => setInputVal(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Bạn muốn kể chuyện gì với mình? Cứ viết tự nhiên nhé... (Enter để gửi, Shift+Enter xuống dòng)"
+                rows={1}
+                className="flex-1 max-h-36 min-h-[44px] py-2 px-2 bg-transparent text-stone-900 text-sm sm:text-base placeholder:text-stone-400 focus:outline-none resize-none leading-relaxed"
+              />
+
+              {/* Send Button: Section 10 ("➤") */}
+              <button
+                id="btn-chat-send-message"
+                type="button"
+                onClick={() => handleSendMessage()}
+                disabled={!inputVal.trim() || isThinking}
+                className={`px-4 py-2.5 sm:py-3 rounded-2xl font-bold transition-all duration-150 flex items-center gap-1.5 cursor-pointer ${
+                  inputVal.trim() && !isThinking
+                    ? 'bg-gradient-to-r from-rose-500 to-amber-500 text-white shadow-xs hover:shadow-md transform active:scale-95'
+                    : 'bg-stone-200 text-stone-400 cursor-not-allowed'
+                }`}
+                title="Gửi tin nhắn (Enter)"
+              >
+                <span className="hidden sm:inline text-xs font-bold">Gửi</span>
+                <Send className="w-4 h-4" />
+              </button>
+
+            </div>
+
+            {/* Privacy & Safe Note Under Input */}
+            <div className="flex flex-wrap items-center justify-between text-[11px] text-stone-500 px-1 gap-2">
+              <div className="flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Hoàn toàn ẩn danh • Không yêu cầu họ tên • Không phán xét</span>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span className="hidden md:inline text-stone-400">Nhấn Enter để gửi, Shift + Enter xuống dòng</span>
+                {messages.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowClearConfirm(true)}
+                    className="text-rose-600 hover:underline cursor-pointer font-medium"
+                  >
+                    Bắt đầu phiên mới
+                  </button>
+                )}
+              </div>
+            </div>
+
           </div>
 
         </div>
@@ -1312,7 +1385,7 @@ export const ChatbotView: React.FC<ChatbotViewProps> = ({ onGoToHelp, onGoToConf
 
       {/* Topics Drawer / Modal (Section 8 of prompt) */}
       {isTopicModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-xl border border-rose-100 space-y-5">
             
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -1397,7 +1470,7 @@ export const ChatbotView: React.FC<ChatbotViewProps> = ({ onGoToHelp, onGoToConf
 
       {/* Clear Chat Confirmation Modal */}
       {showClearConfirm && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
           <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-xl border border-rose-100 text-center space-y-4">
             <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto text-xl">
               🗑️

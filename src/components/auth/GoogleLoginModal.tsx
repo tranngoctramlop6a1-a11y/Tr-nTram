@@ -2,6 +2,11 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../../context/AuthContext';
 import { 
+  verifyStoredPassword, 
+  hasStoredPassword, 
+  normalizeEmail 
+} from '../../utils/authStorage';
+import { 
   X, 
   ShieldCheck, 
   Sparkles, 
@@ -13,7 +18,7 @@ import {
   ArrowRight, 
   KeyRound, 
   User, 
-  CheckCircle2 
+  CheckCircle2
 } from 'lucide-react';
 
 type AuthMode = 'login' | 'register' | 'forgot' | 'reset';
@@ -43,10 +48,6 @@ export const GoogleLoginModal: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Google quick sign-in toggle
-  const [showGoogleCustomInput, setShowGoogleCustomInput] = useState(false);
-  const [googleCustomEmail, setGoogleCustomEmail] = useState('');
-
   // Loading & Feedback
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -66,84 +67,93 @@ export const GoogleLoginModal: React.FC = () => {
     setMode(newMode);
   };
 
-  // 1. Google Sign-In
-  const handleGoogleSignIn = async (targetEmail: string, suggestedName?: string) => {
+  // 1. Strict Gmail / Email + Password Login
+  // Requires both email and password, verifies against localStorage & server
+  const handleLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanEmail = normalizeEmail(email);
+
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setErrorMessage('Vui lòng nhập địa chỉ Gmail hoặc email hợp lệ.');
+      return;
+    }
+
+    const trimmedPassword = password.trim();
+    if (!trimmedPassword) {
+      setErrorMessage('Vui lòng nhập mật khẩu tự chọn của tài khoản.');
+      return;
+    }
+
+    // 1. Check local storage credentials directly
+    const localCheck = verifyStoredPassword(cleanEmail, trimmedPassword);
+    if (!localCheck.success) {
+      setErrorMessage(localCheck.error || 'Sai mật khẩu. Vui lòng nhập đúng mật khẩu đã lưu.');
+      return;
+    }
+
     setIsLoading(true);
     setErrorMessage(null);
     setSuccessMessage(null);
-    const res = await loginWithGoogle(targetEmail, suggestedName);
-    setIsLoading(false);
-    if (!res.success) {
-      setErrorMessage(res.error || 'Đăng nhập Google không thành công.');
-    }
-  };
 
-  // 2. Email + Website Password Login
-  const handleLoginSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email || !email.includes('@')) {
-      setErrorMessage('Vui lòng nhập địa chỉ email hợp lệ.');
-      return;
-    }
-    if (!password) {
-      setErrorMessage('Vui lòng nhập mật khẩu tài khoản website.');
-      return;
-    }
-
-    setIsLoading(true);
-    setErrorMessage(null);
-    const res = await loginWithEmailPassword(email.trim(), password);
+    // 2. Perform authentication with email and password
+    const res = await loginWithGoogle(cleanEmail, trimmedPassword, nickname.trim() || undefined);
     setIsLoading(false);
 
     if (!res.success) {
-      setErrorMessage(res.error || 'Email hoặc mật khẩu không chính xác.');
+      setErrorMessage(res.error || 'Sai mật khẩu. Vui lòng nhập đúng mật khẩu.');
+    } else {
+      closeLoginModal();
     }
   };
 
   // 3. Register Website Account
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !email.includes('@')) {
-      setErrorMessage('Vui lòng nhập địa chỉ email hợp lệ.');
+    const cleanEmail = normalizeEmail(email);
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setErrorMessage('Vui lòng nhập địa chỉ Gmail hoặc email hợp lệ.');
       return;
     }
-    if (password.length < 8) {
-      setErrorMessage('Mật khẩu website phải có ít nhất 8 ký tự.');
+    if (password.length < 6) {
+      setErrorMessage('Mật khẩu tự chọn phải có ít nhất 6 ký tự.');
       return;
     }
     if (password !== confirmPassword) {
-      setErrorMessage('Mật khẩu chưa khớp.');
+      setErrorMessage('Mật khẩu xác nhận chưa khớp.');
       return;
     }
 
     setIsLoading(true);
     setErrorMessage(null);
-    const res = await registerWithEmailPassword(email.trim(), password, nickname.trim());
+    const res = await registerWithEmailPassword(cleanEmail, password.trim(), nickname.trim());
     setIsLoading(false);
 
     if (!res.success) {
       setErrorMessage(res.error || 'Không thể tạo tài khoản.');
+    } else {
+      closeLoginModal();
     }
   };
 
   // 4. Request Password Reset Code
   const handleForgotSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !email.includes('@')) {
-      setErrorMessage('Vui lòng nhập địa chỉ email bạn đã dùng để đăng ký.');
+    const cleanEmail = normalizeEmail(email);
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setErrorMessage('Vui lòng nhập địa chỉ Gmail hoặc email bạn đã dùng.');
       return;
     }
 
     setIsLoading(true);
     setErrorMessage(null);
-    const res = await requestPasswordReset(email.trim());
+    const res = await requestPasswordReset(cleanEmail);
     setIsLoading(false);
 
     if (res.success) {
       if (res.resetCode) {
         setResetCode(res.resetCode);
       }
-      setSuccessMessage(res.message || 'Mã xác thực đã được tạo.');
+      setSuccessMessage(res.message || 'Mã xác thực đã được gửi.');
       setMode('reset');
     } else {
       setErrorMessage(res.error || 'Không thể gửi yêu cầu đặt lại mật khẩu.');
@@ -153,26 +163,29 @@ export const GoogleLoginModal: React.FC = () => {
   // 5. Confirm Password Reset (preserves UID & all data)
   const handleResetSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const cleanEmail = normalizeEmail(email);
     if (!resetCode.trim()) {
       setErrorMessage('Vui lòng nhập mã xác thực 6 chữ số.');
       return;
     }
-    if (password.length < 8) {
-      setErrorMessage('Mật khẩu mới phải có ít nhất 8 ký tự.');
+    if (password.length < 6) {
+      setErrorMessage('Mật khẩu mới phải có ít nhất 6 ký tự.');
       return;
     }
     if (password !== confirmPassword) {
-      setErrorMessage('Mật khẩu chưa khớp.');
+      setErrorMessage('Mật khẩu xác nhận chưa khớp.');
       return;
     }
 
     setIsLoading(true);
     setErrorMessage(null);
-    const res = await confirmPasswordReset(email.trim(), resetCode.trim(), password);
+    const res = await confirmPasswordReset(cleanEmail, resetCode.trim(), password.trim());
     setIsLoading(false);
 
     if (!res.success) {
       setErrorMessage(res.error || 'Đặt lại mật khẩu thất bại. Vui lòng kiểm tra lại mã xác thực.');
+    } else {
+      closeLoginModal();
     }
   };
 
@@ -258,98 +271,48 @@ export const GoogleLoginModal: React.FC = () => {
           {/* MODE: LOGIN */}
           {mode === 'login' && (
             <div className="space-y-4">
-              {/* Option 1: Continue with Google */}
-              <div>
-                <button
-                  type="button"
-                  disabled={isLoading}
-                  onClick={() => handleGoogleSignIn('tranngoctramlop6a1@gmail.com', 'Trâm Ngọc')}
-                  className="w-full flex items-center justify-between p-3.5 rounded-2xl border border-gray-200 hover:border-teal-400 hover:bg-teal-50/20 transition-all text-left group cursor-pointer"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-9 h-9 rounded-xl bg-white border border-gray-200 flex items-center justify-center shrink-0 shadow-xs">
-                      <svg className="w-5 h-5" viewBox="0 0 24 24">
-                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-                      </svg>
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-gray-800">🔵 Tiếp tục với Google</div>
-                      <div className="text-[11px] text-gray-500 truncate">tranngoctramlop6a1@gmail.com</div>
-                    </div>
-                  </div>
-                  <span className="text-xs font-medium text-teal-600 px-2.5 py-1 rounded-full bg-teal-50 group-hover:bg-teal-100 transition-colors shrink-0">
-                    Vào ngay
-                  </span>
-                </button>
-
-                {!showGoogleCustomInput ? (
-                  <button
-                    type="button"
-                    onClick={() => setShowGoogleCustomInput(true)}
-                    className="w-full mt-2 text-[11px] text-gray-500 hover:text-teal-600 hover:underline transition-colors text-center cursor-pointer"
-                  >
-                    Đăng nhập tài khoản Google khác
-                  </button>
-                ) : (
-                  <div className="mt-2 p-3 rounded-2xl bg-gray-50 border border-gray-200">
-                    <label className="block text-[11px] font-medium text-gray-700 mb-1">Email Google:</label>
-                    <div className="flex gap-2">
-                      <input
-                        type="email"
-                        value={googleCustomEmail}
-                        onChange={(e) => setGoogleCustomEmail(e.target.value)}
-                        placeholder="tenban@gmail.com"
-                        className="flex-1 px-3 py-1.5 text-xs rounded-xl bg-white border border-gray-200 focus:outline-hidden focus:ring-2 focus:ring-teal-400"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (googleCustomEmail.includes('@')) {
-                            handleGoogleSignIn(googleCustomEmail.trim());
-                          }
-                        }}
-                        className="px-3 py-1.5 text-xs rounded-xl bg-teal-500 text-white font-medium hover:bg-teal-600 cursor-pointer"
-                      >
-                        Vào
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Separator */}
-              <div className="relative flex items-center justify-center my-2">
-                <div className="border-t border-gray-200 w-full" />
-                <span className="bg-white px-3 text-[11px] text-gray-400 uppercase tracking-wider font-medium shrink-0">
-                  hoặc
-                </span>
-              </div>
-
-              {/* Option 2: Email + Dedicated Website Password */}
-              <form onSubmit={handleLoginSubmit} className="space-y-3">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-700">
-                  <Mail className="w-3.5 h-3.5 text-teal-600" />
-                  <span>✉️ Đăng nhập bằng Email & Mật khẩu website</span>
+              {/* Security Policy Badge */}
+              <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200/80 text-amber-950 text-xs flex items-start gap-2.5 shadow-2xs">
+                <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="leading-relaxed">
+                  <span className="font-semibold text-amber-900">Bảo mật bắt buộc: </span>
+                  Hệ thống yêu cầu nhập đầy đủ <span className="font-semibold text-amber-900">Gmail</span> và <span className="font-semibold text-amber-900">Mật khẩu tự chọn</span>. Mật khẩu phải khớp với dữ liệu đã lưu trong thiết bị mới được phép đăng nhập.
                 </div>
+              </div>
 
+              {/* Strict Gmail + Password Form */}
+              <form onSubmit={handleLoginSubmit} className="space-y-3.5 pt-1">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="Nhập email của bạn"
-                    className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-gray-200 focus:outline-hidden focus:ring-2 focus:ring-teal-400 bg-gray-50/50"
-                  />
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Gmail hoặc Email tài khoản <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        setErrorMessage(null);
+                      }}
+                      placeholder="ví dụ: tranngoctramlop6a1@gmail.com"
+                      className="w-full pl-9 pr-3.5 py-2.5 text-xs rounded-xl border border-gray-200 focus:outline-hidden focus:ring-2 focus:ring-teal-400 bg-gray-50/50"
+                    />
+                    <Mail className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                  {email && hasStoredPassword(email) && (
+                    <p className="text-[11px] text-teal-700 font-medium mt-1 flex items-center gap-1">
+                      <Lock className="w-3 h-3 text-teal-600" />
+                      Tài khoản này đã có mật khẩu lưu trên máy. Vui lòng nhập đúng mật khẩu.
+                    </p>
+                  )}
                 </div>
 
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-medium text-gray-600">Mật khẩu</label>
+                    <label className="block text-xs font-medium text-gray-700">
+                      Mật khẩu tự chọn <span className="text-rose-500">*</span>
+                    </label>
                     <button
                       type="button"
                       onClick={() => switchMode('forgot')}
@@ -363,31 +326,42 @@ export const GoogleLoginModal: React.FC = () => {
                       type={showPassword ? 'text' : 'password'}
                       required
                       value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Nhập mật khẩu"
-                      className="w-full px-3.5 py-2.5 pr-10 text-xs rounded-xl border border-gray-200 focus:outline-hidden focus:ring-2 focus:ring-teal-400 bg-gray-50/50"
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        setErrorMessage(null);
+                      }}
+                      placeholder="Nhập mật khẩu tự chọn của bạn"
+                      className="w-full pl-9 pr-10 py-2.5 text-xs rounded-xl border border-gray-200 focus:outline-hidden focus:ring-2 focus:ring-teal-400 bg-gray-50/50"
                     />
+                    <Lock className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer p-1"
                       tabIndex={-1}
                       title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
+                  <p className="text-[10.5px] text-gray-400 mt-1">
+                    Mật khẩu này là mật khẩu riêng bảo vệ dữ liệu website, không hiển thị cho bất kỳ ai.
+                  </p>
                 </div>
 
+                {/* Submit button requiring BOTH Gmail & Password */}
                 <button
                   type="submit"
-                  disabled={isLoading}
-                  className="w-full py-2.5 rounded-xl bg-teal-500 hover:bg-teal-600 text-white font-medium text-xs shadow-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                  disabled={isLoading || !email.trim() || !password.trim()}
+                  className="w-full py-2.5 rounded-xl bg-teal-500 hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium text-xs shadow-xs transition-colors cursor-pointer flex items-center justify-center gap-2"
                 >
                   {isLoading ? (
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   ) : (
-                    <span>Đăng nhập</span>
+                    <>
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>Đăng nhập bằng Gmail</span>
+                    </>
                   )}
                 </button>
               </form>
@@ -406,11 +380,11 @@ export const GoogleLoginModal: React.FC = () => {
                 onClick={() => switchMode('register')}
                 className="w-full py-2.5 rounded-xl border border-teal-200 text-teal-700 bg-teal-50/40 hover:bg-teal-50 text-xs font-semibold transition-colors cursor-pointer"
               >
-                Tạo tài khoản
+                Tạo tài khoản mới 🌱
               </button>
 
               {/* Divider & Guest Access */}
-              <div className="pt-2 border-t border-gray-100 text-center space-y-2">
+              <div className="pt-2 border-t border-gray-100 text-center space-y-1.5">
                 <button
                   type="button"
                   onClick={enterAsGuest}
@@ -419,8 +393,8 @@ export const GoogleLoginModal: React.FC = () => {
                   Vào thẳng, không cần tài khoản
                 </button>
 
-                <p className="text-[11px] text-gray-400 leading-tight">
-                  Mật khẩu này là mật khẩu riêng của website, không liên quan đến mật khẩu Gmail.
+                <p className="text-[10.5px] text-gray-400 leading-tight">
+                  Tất cả nhật ký và cây cảm xúc luôn được mã hóa và bảo mật trên trình duyệt của bạn.
                 </p>
               </div>
             </div>

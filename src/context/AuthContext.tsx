@@ -1,5 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { migrateAllGuestDataToUser, syncUserProgressFromServer } from '../utils/userProgressStore';
+import { 
+  verifyStoredPassword, 
+  saveStoredAccountCredential, 
+  updateStoredPassword, 
+  normalizeEmail 
+} from '../utils/authStorage';
 
 export interface AuthUser {
   id: string;
@@ -31,7 +37,7 @@ interface AuthContextType {
   openNicknameModal: () => void;
   closeNicknameModal: () => void;
   enterAsGuest: () => void;
-  loginWithGoogle: (emailOrToken: string, suggestedNickname?: string, avatar?: string) => Promise<{ success: boolean; isNew?: boolean; error?: string }>;
+  loginWithGoogle: (emailOrToken: string, password: string, suggestedNickname?: string, avatar?: string) => Promise<{ success: boolean; isNew?: boolean; error?: string }>;
   loginWithEmailPassword: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   registerWithEmailPassword: (email: string, password: string, nickname?: string) => Promise<{ success: boolean; error?: string }>;
   requestPasswordReset: (email: string) => Promise<{ success: boolean; resetCode?: string; message?: string; error?: string }>;
@@ -226,6 +232,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loginWithGoogle = useCallback(async (
     emailOrToken: string,
+    password: string,
     suggestedNickname?: string,
     avatar?: string
   ) => {
@@ -245,7 +252,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      const cleanEmail = email.toLowerCase().trim();
+      const cleanEmail = normalizeEmail(email);
+      if (!cleanEmail || !cleanEmail.includes('@')) {
+        return { success: false, error: 'Địa chỉ Gmail không hợp lệ.' };
+      }
+
+      if (!password || !password.trim()) {
+        return { success: false, error: 'Vui lòng nhập mật khẩu tự chọn của bạn.' };
+      }
+
+      const trimmedPassword = password.trim();
+
+      // 1. Strict verification against saved password in localStorage
+      const localCheck = verifyStoredPassword(cleanEmail, trimmedPassword);
+      if (!localCheck.success) {
+        return {
+          success: false,
+          error: localCheck.error || 'Sai mật khẩu. Vui lòng nhập đúng mật khẩu.'
+        };
+      }
+
       let activeToken = 'mock_token_' + Date.now();
       let isNewUser = false;
       let serverUser: any = {
@@ -253,6 +279,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: cleanEmail,
         nickname: name || cleanEmail.split('@')[0],
         avatar: picture,
+        has_password: true,
         created_at: new Date().toISOString()
       };
 
@@ -262,40 +289,72 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             email: cleanEmail,
+            password: trimmedPassword,
             suggestedNickname: name || cleanEmail.split('@')[0],
             suggestedAvatar: picture
           })
         });
-        if (authRes.ok) {
-          const authData = await authRes.json();
-          if (authData.token) activeToken = authData.token;
-          if (authData.user) serverUser = authData.user;
-          if (authData.isNew) isNewUser = true;
+        const authData = await authRes.json();
+        if (!authRes.ok) {
+          return { success: false, error: authData.error || 'Sai mật khẩu. Vui lòng nhập đúng mật khẩu.' };
         }
+        if (authData.token) activeToken = authData.token;
+        if (authData.user) serverUser = authData.user;
+        if (authData.isNew) isNewUser = true;
       } catch (err) {
-        console.warn('Không thể kết nối API xác thực máy chủ, sử dụng phiên cục bộ:', err);
+        console.warn('Không thể kết nối API máy chủ, sử dụng phiên cục bộ an toàn:', err);
       }
+
+      // Save/sync verified credentials in localStorage
+      saveStoredAccountCredential(cleanEmail, trimmedPassword, {
+        nickname: serverUser.nickname,
+        avatar: serverUser.avatar,
+        id: serverUser.id
+      });
 
       establishSession(activeToken, serverUser, isNewUser);
       return { success: true, isNew: isNewUser };
     } catch (e: any) {
-      return { success: false, error: e.message || 'Đăng nhập Google thất bại.' };
+      return { success: false, error: e.message || 'Đăng nhập thất bại.' };
     }
   }, [establishSession]);
 
   // Login with Website Email & Password
   const loginWithEmailPassword = useCallback(async (email: string, password: string) => {
     try {
+      const cleanEmail = normalizeEmail(email);
+      const trimmedPassword = (password || '').trim();
+
+      if (!cleanEmail || !cleanEmail.includes('@')) {
+        return { success: false, error: 'Vui lòng nhập email hợp lệ.' };
+      }
+      if (!trimmedPassword) {
+        return { success: false, error: 'Vui lòng nhập mật khẩu.' };
+      }
+
+      // Strict check against localStorage
+      const localCheck = verifyStoredPassword(cleanEmail, trimmedPassword);
+      if (!localCheck.success) {
+        return { success: false, error: localCheck.error || 'Sai mật khẩu.' };
+      }
+
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password })
+        body: JSON.stringify({ email: cleanEmail, password: trimmedPassword })
       });
 
       const data = await res.json();
       if (!res.ok || !data.success) {
-        return { success: false, error: data.error || 'Đăng nhập không thành công.' };
+        return { success: false, error: data.error || 'Sai mật khẩu hoặc email không chính xác.' };
       }
+
+      // Save/sync in localStorage
+      saveStoredAccountCredential(cleanEmail, trimmedPassword, {
+        nickname: data.user?.nickname,
+        avatar: data.user?.avatar,
+        id: data.user?.id
+      });
 
       establishSession(data.token, data.user, false);
       return { success: true };
@@ -307,12 +366,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Register with Website Email & Password
   const registerWithEmailPassword = useCallback(async (email: string, password: string, nickname?: string) => {
     try {
+      const cleanEmail = normalizeEmail(email);
+      const trimmedPassword = (password || '').trim();
+
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: email.trim(),
-          password,
+          email: cleanEmail,
+          password: trimmedPassword,
           nickname: nickname?.trim()
         })
       });
@@ -321,6 +383,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!res.ok || !data.success) {
         return { success: false, error: data.error || 'Đăng ký không thành công.' };
       }
+
+      saveStoredAccountCredential(cleanEmail, trimmedPassword, {
+        nickname: data.user?.nickname || nickname,
+        avatar: data.user?.avatar,
+        id: data.user?.id
+      });
 
       establishSession(data.token, data.user, true);
       return { success: true };
@@ -356,11 +424,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Confirm password reset with code (preserves UID & all data)
   const confirmPasswordReset = useCallback(async (email: string, code: string, newPassword: string) => {
     try {
+      const cleanEmail = normalizeEmail(email);
       const res = await fetch('/api/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: email.trim(),
+          email: cleanEmail,
           code: code.trim(),
           newPassword
         })
@@ -370,6 +439,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!res.ok || !data.success) {
         return { success: false, error: data.error || 'Đặt lại mật khẩu thất bại.' };
       }
+
+      updateStoredPassword(cleanEmail, newPassword);
 
       if (data.token && data.user) {
         establishSession(data.token, data.user, false);
@@ -403,6 +474,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const data = await res.json();
       if (!res.ok || !data.success) {
         return { success: false, error: data.error || 'Đổi mật khẩu thất bại.' };
+      }
+
+      if (user?.email) {
+        updateStoredPassword(user.email, newPassword);
       }
 
       // Mark user as having a password set

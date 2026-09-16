@@ -28,10 +28,17 @@ import {
   Lock,
   Camera,
   AlertCircle,
-  ImageIcon
+  ImageIcon,
+  Calendar
 } from 'lucide-react';
 import { JournalStyleDisplay, JournalScrapbookStyle } from './JournalStyleDisplay';
 import { uploadJournalImage } from '../../utils/journalImageUpload';
+import { 
+  getTomorrowDateString, 
+  formatUnlockDateLabel, 
+  formatRemainingTimeText, 
+  isJournalLocked 
+} from '../../utils/journalTimeLock';
 
 interface JournalEditorModalProps {
   isOpen: boolean;
@@ -65,6 +72,7 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
   const [stickers, setStickers] = useState<string[]>([]);
   const [theme, setTheme] = useState<JournalTheme>('gentle');
   const [readLaterDate, setReadLaterDate] = useState<string | undefined>(undefined);
+  const [unlockDate, setUnlockDate] = useState<string | undefined>(undefined);
   const [reflectionNote, setReflectionNote] = useState('');
   const [isFavorite, setIsFavorite] = useState(false);
 
@@ -152,7 +160,9 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
         setTags(draft.tags || []);
         setStickers(draft.stickers || []);
         setTheme(draft.theme || 'gentle');
-        setReadLaterDate(draft.readLaterDate);
+        const effectiveUnlock = draft.unlockDate || draft.readLaterDate;
+        setUnlockDate(effectiveUnlock);
+        setReadLaterDate(effectiveUnlock);
         setReflectionNote(draft.reflectionNote || '');
         setIsFavorite(!!draft.isFavorite);
         setSaveStatus('saved');
@@ -168,7 +178,9 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
         setTags(existingEntry.tags || []);
         setStickers(existingEntry.stickers || []);
         setTheme(existingEntry.theme || 'gentle');
-        setReadLaterDate(existingEntry.readLaterDate);
+        const effectiveUnlock = existingEntry.unlockDate || existingEntry.readLaterDate;
+        setUnlockDate(effectiveUnlock);
+        setReadLaterDate(effectiveUnlock);
         setReflectionNote(existingEntry.reflectionNote || '');
         setIsFavorite(!!existingEntry.isFavorite);
         setSaveStatus('saved');
@@ -184,6 +196,7 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
         setTags([]);
         setStickers([]);
         setTheme('gentle');
+        setUnlockDate(undefined);
         setReadLaterDate(undefined);
         setReflectionNote('');
         setIsFavorite(false);
@@ -255,9 +268,11 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
     newReadLater?: string,
     newReflection?: string,
     newFav?: boolean,
-    newImages?: JournalImageItem[]
+    newImages?: JournalImageItem[],
+    newUnlock?: string
   ) => {
     const effectiveImages = newImages ?? images;
+    const effectiveUnlock = newUnlock ?? newReadLater ?? unlockDate ?? readLaterDate;
 
     // 1. Instant sync to localStorage draft
     saveJournalDraft(dateStr, {
@@ -270,7 +285,8 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
       tags: newTags ?? tags,
       stickers: newStickers ?? stickers,
       theme: newTheme ?? theme,
-      readLaterDate: newReadLater ?? readLaterDate,
+      readLaterDate: effectiveUnlock,
+      unlockDate: effectiveUnlock,
       reflectionNote: newReflection ?? reflectionNote,
       isFavorite: typeof newFav === 'boolean' ? newFav : isFavorite
     });
@@ -300,7 +316,8 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
         tags: newTags ?? tags,
         stickers: newStickers ?? stickers,
         theme: newTheme ?? theme,
-        readLaterDate: newReadLater ?? readLaterDate,
+        readLaterDate: effectiveUnlock,
+        unlockDate: effectiveUnlock,
         reflectionNote: (newReflection ?? reflectionNote)?.trim() || undefined,
         isFavorite: typeof newFav === 'boolean' ? newFav : isFavorite
       };
@@ -486,12 +503,33 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
     handleInsertPrompt(p);
   };
 
+  // Handle setting unlock date for Time-locked Diary
+  const handleSetUnlockDate = (newUnlock: string | undefined) => {
+    setUnlockDate(newUnlock);
+    setReadLaterDate(newUnlock);
+    triggerAutoSave(
+      content,
+      messages,
+      title,
+      mood,
+      tags,
+      stickers,
+      theme,
+      newUnlock,
+      reflectionNote,
+      isFavorite,
+      images,
+      newUnlock
+    );
+  };
+
   // Explicit completion handler
   const handleFinishAndClose = () => {
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
 
     if (content.trim() || title.trim() || mood || messages.length > 0 || images.length > 0) {
       const nowIso = new Date().toISOString();
+      const effectiveUnlock = unlockDate || readLaterDate;
       const updated: JournalEntry = {
         id: existingEntry?.id || `journal-${dateStr}`,
         date: dateStr,
@@ -506,7 +544,8 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
         tags: tags,
         stickers: stickers,
         theme: theme,
-        readLaterDate: readLaterDate,
+        readLaterDate: effectiveUnlock,
+        unlockDate: effectiveUnlock,
         reflectionNote: reflectionNote.trim() || undefined,
         isFavorite: isFavorite
       };
@@ -521,6 +560,7 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
 
     if (content.trim() || title.trim() || mood || messages.length > 0 || images.length > 0) {
+      const effectiveUnlock = unlockDate || readLaterDate;
       saveJournalDraft(dateStr, {
         content,
         messages,
@@ -531,7 +571,8 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
         tags,
         stickers,
         theme,
-        readLaterDate,
+        readLaterDate: effectiveUnlock,
+        unlockDate: effectiveUnlock,
         reflectionNote,
         isFavorite,
         updatedAt: new Date().toISOString()
@@ -552,7 +593,8 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
         tags: tags,
         stickers: stickers,
         theme: theme,
-        readLaterDate: readLaterDate,
+        readLaterDate: effectiveUnlock,
+        unlockDate: effectiveUnlock,
         reflectionNote: reflectionNote.trim() || undefined,
         isFavorite: isFavorite
       };
@@ -693,12 +735,17 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
                 <span>Tag</span>
               </button>
 
-              {/* Read later badge if active */}
-              {readLaterDate && (
-                <span className="ml-auto text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-900 border border-amber-200 flex items-center gap-1">
-                  <span>💌</span>
-                  <span>Đọc lại: {readLaterDate}</span>
-                </span>
+              {/* Read later / Time-lock badge if active */}
+              {(unlockDate || readLaterDate) && (
+                <button
+                  type="button"
+                  onClick={() => setShowReadLaterPicker(true)}
+                  className="ml-auto text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-100/80 hover:bg-amber-200/80 text-amber-950 border border-amber-300 flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="Nhấn để chỉnh sửa ngày mở lại"
+                >
+                  <Lock className="w-3 h-3 text-amber-700" />
+                  <span>Khóa đến: {unlockDate || readLaterDate}</span>
+                </button>
               )}
             </div>
 
@@ -935,9 +982,15 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
               <button
                 type="button"
                 onClick={() => setShowReadLaterPicker(!showReadLaterPicker)}
-                className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 text-[11px] font-semibold border border-amber-200 transition-colors flex items-center gap-1 cursor-pointer"
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors flex items-center gap-1 cursor-pointer ${
+                  (unlockDate || readLaterDate)
+                    ? 'bg-amber-100 text-amber-950 border-amber-300 font-bold shadow-2xs'
+                    : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-200'
+                }`}
+                title="Hẹn giờ mở lại trang nhật ký (Time-locked Diary)"
               >
-                <span>💌 Đọc lại</span>
+                <Lock className="w-3 h-3 text-amber-700" />
+                <span>{(unlockDate || readLaterDate) ? `Khóa đến ${unlockDate || readLaterDate}` : '⏳ Hẹn giờ mở lại'}</span>
               </button>
             </div>
 
@@ -1006,44 +1059,106 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
             </div>
           )}
 
-          {/* Read later date picker drawer */}
+          {/* Time-locked Diary date picker drawer (Hẹn giờ mở lại) */}
           {showReadLaterPicker && (
-            <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-xs space-y-2">
+            <div className="p-4 rounded-2xl bg-amber-50/95 border border-amber-200 text-xs space-y-3 animate-in fade-in duration-150">
               <div className="flex items-center justify-between font-bold text-amber-950">
-                <span>💌 Hẹn ngày mở lại trang này:</span>
-                <button type="button" onClick={() => setShowReadLaterPicker(false)} className="text-amber-600">✕</button>
+                <span className="flex items-center gap-1.5 text-sm">
+                  <Lock className="w-4 h-4 text-amber-700" />
+                  <span>Hẹn ngày mở lại (Time-locked Diary)</span>
+                </span>
+                <button 
+                  type="button" 
+                  onClick={() => setShowReadLaterPicker(false)} 
+                  className="p-1 rounded-lg text-amber-700 hover:bg-amber-100 transition-colors"
+                >
+                  ✕
+                </button>
               </div>
-              <div className="flex flex-wrap items-center gap-1.5">
-                {[
-                  { label: 'Không hẹn', days: 0 },
-                  { label: 'Ngày mai', days: 1 },
-                  { label: '7 ngày sau', days: 7 },
-                  { label: '30 ngày sau', days: 30 }
-                ].map((opt) => {
-                  let targetVal: string | undefined = undefined;
-                  if (opt.days > 0) {
-                    const d = new Date();
-                    d.setDate(d.getDate() + opt.days);
-                    targetVal = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-                  }
-                  const isCur = readLaterDate === targetVal;
-                  return (
+
+              <p className="text-[11px] text-amber-800 leading-relaxed">
+                Chọn ngày bài viết này sẽ được mở ra đọc lại. Trước mốc thời gian này, bài viết sẽ ở trạng thái <span className="font-semibold">“Đang bị khóa”</span> kèm biểu tượng ổ khóa và làm mờ nội dung để bạn không xem trước.
+              </p>
+
+              {/* Lịch chọn ngày mở lại bằng thẻ <input type="date"> */}
+              <div className="space-y-2 pt-1">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <div className="relative flex-1 max-w-xs">
+                    <input
+                      type="date"
+                      min={getTomorrowDateString()}
+                      value={unlockDate || readLaterDate || ''}
+                      onChange={(e) => handleSetUnlockDate(e.target.value || undefined)}
+                      className="w-full px-3 py-2 pl-9 rounded-xl border border-amber-300 bg-white text-xs sm:text-sm font-medium text-amber-950 shadow-2xs focus:outline-hidden focus:ring-2 focus:ring-amber-400 cursor-pointer"
+                    />
+                    <Calendar className="w-4 h-4 text-amber-600 absolute left-3 top-2.5 pointer-events-none" />
+                  </div>
+
+                  {(unlockDate || readLaterDate) && (
                     <button
-                      key={opt.label}
                       type="button"
-                      onClick={() => {
-                        setReadLaterDate(targetVal);
-                        setShowReadLaterPicker(false);
-                        triggerAutoSave(content, messages, title, mood, tags, stickers, theme, targetVal, reflectionNote, isFavorite, images);
-                      }}
-                      className={`px-3 py-1 rounded-lg font-semibold transition-colors ${
-                        isCur ? 'bg-amber-600 text-white' : 'bg-white text-amber-900 border border-amber-200'
-                      }`}
+                      onClick={() => handleSetUnlockDate(undefined)}
+                      className="px-3 py-2 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 text-xs font-bold transition-colors cursor-pointer"
                     >
-                      {opt.label}
+                      Bỏ hẹn giờ
                     </button>
-                  );
-                })}
+                  )}
+                </div>
+
+                {/* Status indicator when locked */}
+                {(unlockDate || readLaterDate) && (
+                  <div className="p-2.5 rounded-xl bg-white/90 border border-amber-200 text-amber-950 text-[11px] space-y-0.5">
+                    <div className="font-bold flex items-center gap-1.5 text-amber-900">
+                      <span>🔒 Sẽ mở khóa vào:</span>
+                      <span className="text-amber-950">{formatUnlockDateLabel(unlockDate || readLaterDate!)}</span>
+                    </div>
+                    <div className="text-amber-700 font-semibold">
+                      {formatRemainingTimeText(unlockDate || readLaterDate!)}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Quick Presets */}
+              <div className="space-y-1.5 pt-1 border-t border-amber-200/70">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-amber-700 block">
+                  Hoặc chọn nhanh thời gian:
+                </span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {[
+                    { label: 'Không hẹn', days: 0 },
+                    { label: 'Ngày mai (+1d)', days: 1 },
+                    { label: '3 ngày sau', days: 3 },
+                    { label: '1 tuần sau', days: 7 },
+                    { label: '1 tháng sau', days: 30 },
+                    { label: '100 ngày sau', days: 100 },
+                    { label: '1 năm sau', days: 365 }
+                  ].map((opt) => {
+                    let targetVal: string | undefined = undefined;
+                    if (opt.days > 0) {
+                      const d = new Date();
+                      d.setDate(d.getDate() + opt.days);
+                      const mm = String(d.getMonth() + 1).padStart(2, '0');
+                      const dd = String(d.getDate()).padStart(2, '0');
+                      targetVal = `${d.getFullYear()}-${mm}-${dd}`;
+                    }
+                    const isCur = (unlockDate || readLaterDate) === targetVal;
+                    return (
+                      <button
+                        key={opt.label}
+                        type="button"
+                        onClick={() => handleSetUnlockDate(targetVal)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                          isCur 
+                            ? 'bg-amber-700 text-white shadow-2xs font-bold' 
+                            : 'bg-white text-amber-900 border border-amber-200 hover:bg-amber-100/70'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}

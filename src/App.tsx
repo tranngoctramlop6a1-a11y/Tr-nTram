@@ -18,6 +18,7 @@ import { JournalView } from './components/JournalView';
 import { EmotionPlantView } from './components/plant/EmotionPlantView';
 import { SelfLettersView } from './components/letters/SelfLettersView';
 import { FastMathGame } from './components/FastMathGame';
+import { FloatingChatbotWidget } from './components/FloatingChatbotWidget';
 import { BotMascot } from './components/BotMascot';
 import { Footer } from './components/Footer';
 import { getDailyJournalQuote } from './data/journalData';
@@ -560,6 +561,7 @@ function AppContent() {
         {/* Tab: Chatbot "Bạn ơi, mình nói nè" */}
         {currentTab === 'chatbot' && (
           <ChatbotView 
+            onClose={() => setCurrentTab('home')}
             onGoToHelp={() => setCurrentTab('help')} 
             onGoToConfessions={() => setCurrentTab('confessions')}
             onGoToJournal={(note) => {
@@ -633,6 +635,12 @@ function AppContent() {
 
       {/* Floating Mini Game: 🧠 Phép tính nhanh (Bottom Left) */}
       <FastMathGame />
+
+      {/* Floating Chatbot Launcher Widget (Bottom Right) */}
+      <FloatingChatbotWidget 
+        onOpenFullChat={() => setCurrentTab('chatbot')}
+        isFullChatActive={currentTab === 'chatbot'}
+      />
 
       {/* Create Confession Modal */}
       <CreateConfessionModal

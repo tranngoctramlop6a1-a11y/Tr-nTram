@@ -670,25 +670,46 @@ ${lastBotReply || '(Chưa có câu trả lời trước)'}
         setTimeout(() => reject(new Error('Gemini API call timed out after 25s')), 25000)
       );
 
-      const geminiCall = gemini.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: formattedContents,
-        config: {
-          systemInstruction: contextualInstruction,
-          temperature: 0.75,
-          maxOutputTokens: 3500,
-        }
-      });
+      let rawResponseText = '';
 
-      const response = await Promise.race([geminiCall, timeoutPromise]);
+      // 1. Try modern Gemini Flash (gemini-3.8-flash)
+      try {
+        const geminiCall = gemini.models.generateContent({
+          model: 'gemini-3.8-flash',
+          contents: formattedContents,
+          config: {
+            systemInstruction: contextualInstruction,
+            temperature: 0.75,
+            maxOutputTokens: 3500,
+          }
+        });
+
+        const response = await Promise.race([geminiCall, timeoutPromise]);
+        rawResponseText = response.text || '';
+      } catch (primaryError) {
+        console.warn('Primary Gemini Flash (gemini-3.8-flash) error, attempting fallback alias (gemini-flash-latest):', primaryError);
+        
+        // 2. Retry with gemini-flash-latest alias
+        const retryCall = gemini.models.generateContent({
+          model: 'gemini-flash-latest',
+          contents: formattedContents,
+          config: {
+            systemInstruction: contextualInstruction,
+            temperature: 0.75,
+            maxOutputTokens: 3500,
+          }
+        });
+        const retryResponse = await Promise.race([retryCall, timeoutPromise]);
+        rawResponseText = retryResponse.text || '';
+      }
 
       const replyText = sanitizeBotReply(
-        response.text || generateSmartFallback(userPrompt, supportMode, lastBotReply),
+        rawResponseText || generateSmartFallback(userPrompt, supportMode, lastBotReply),
         recentResponseMemory?.history
       );
       return res.json({ reply: replyText, source: 'gemini' });
     } catch (apiError: unknown) {
-      console.warn('Gemini API call warning, using empathetic fallback:', apiError);
+      console.warn('Gemini API call caught error, smoothly returning warm empathetic fallback:', apiError);
       const fallbackReply = sanitizeBotReply(
         generateSmartFallback(userPrompt, supportMode, lastBotReply),
         recentResponseMemory?.history
@@ -697,26 +718,20 @@ ${lastBotReply || '(Chưa có câu trả lời trước)'}
     }
 
   } catch (error: unknown) {
-    console.error('Error in /api/chat:', error);
+    console.warn('Unexpected error in /api/chat, safely handling with warm fallback:', error);
     try {
       const userPrompt = req.body?.messages?.[req.body?.messages?.length - 1]?.content || '';
-      if (userPrompt) {
-        const fallbackReply = sanitizeBotReply(
-          generateSmartFallback(userPrompt, req.body?.supportMode || 'general', undefined),
-          req.body?.recentResponseMemory?.history
-        );
-        if (fallbackReply) {
-          return res.json({ reply: fallbackReply, source: 'error_fallback' });
-        }
-      }
-    } catch (fallbackErr) {
-      console.warn('Fallback error in /api/chat catch:', fallbackErr);
+      const fallbackReply = sanitizeBotReply(
+        generateSmartFallback(userPrompt, req.body?.supportMode || 'general', undefined),
+        req.body?.recentResponseMemory?.history
+      );
+      return res.json({ reply: fallbackReply, source: 'fallback' });
+    } catch {
+      return res.json({
+        reply: 'Tớ vẫn đang ở đây ngồi nghe cậu nè. Cứ thả lỏng rồi kể tiếp với tớ nhé, không cần phải diễn đạt thật hay đâu 🌿',
+        source: 'fallback'
+      });
     }
-
-    res.status(500).json({
-      error: 'Internal server error',
-      reply: 'Tớ đang gặp chút trục trặc khi xử lý tin nhắn. Bạn bấm thử lại tin này giúp tớ nhé! 🫂'
-    });
   }
 });
 
@@ -744,30 +759,39 @@ function optionalAuth(req: express.Request, res: express.Response, next: express
   next();
 }
 
-// 1. Google Sign-In / Account Creation & Session (OAuth / Google Account)
+// 1. Google Sign-In / Account Creation & Session (OAuth / Google Account with password requirement)
 app.post('/api/auth/google', (req, res) => {
   try {
-    const { google_auth_id, googleId, email, suggestedNickname, suggestedAvatar } = req.body;
+    const { google_auth_id, googleId, email, password, suggestedNickname, suggestedAvatar } = req.body;
     if (!email || typeof email !== 'string' || !email.includes('@')) {
       return res.status(400).json({ error: 'Email không hợp lệ.' });
     }
 
+    if (!password || typeof password !== 'string' || !password.trim()) {
+      return res.status(400).json({ error: 'Vui lòng nhập mật khẩu tự chọn để đăng nhập.' });
+    }
+
     const cleanEmail = email.trim().toLowerCase();
     const authId = google_auth_id || googleId || `google_${Buffer.from(cleanEmail).toString('base64').replace(/=/g, '')}`;
-    const { user, isNew } = db.findOrCreateGoogleUser({
+    const result = db.findOrCreateGoogleUser({
       google_auth_id: authId,
       email: cleanEmail,
+      password: password.trim(),
       suggestedNickname,
       suggestedAvatar
     });
 
-    const token = db.createSession(user.id);
+    if (result.error || !result.user) {
+      return res.status(401).json({ error: result.error || 'Sai mật khẩu. Vui lòng nhập đúng mật khẩu.' });
+    }
+
+    const token = db.createSession(result.user.id);
 
     // Return safe user object
     res.json({
       token,
-      isNew,
-      user: db.getSafeUser(user)
+      isNew: Boolean(result.isNew),
+      user: db.getSafeUser(result.user)
     });
   } catch (error) {
     console.error('Error in /api/auth/google:', error);

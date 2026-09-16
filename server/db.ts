@@ -261,14 +261,23 @@ class Database {
     return null;
   }
 
-  // Find or create user via Google OAuth payload
+  // Find or create user via Google OAuth / Gmail payload with strict password verification
   public findOrCreateGoogleUser(params: {
     google_auth_id?: string;
     email: string;
+    password?: string;
     suggestedNickname?: string;
     suggestedAvatar?: string;
-  }): { user: UserRecord; isNew: boolean } {
+  }): { user?: UserRecord; isNew?: boolean; error?: string } {
     const cleanEmail = params.email.trim().toLowerCase();
+
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return { error: 'Email không hợp lệ.' };
+    }
+
+    if (!params.password || !params.password.trim()) {
+      return { error: 'Vui lòng nhập mật khẩu tự chọn để tiếp tục.' };
+    }
 
     // 1. Lookup existing user by email
     let existing = this.getUserByEmail(cleanEmail);
@@ -279,6 +288,19 @@ class Database {
     }
 
     if (existing) {
+      // If user already has a password set on server, verify it
+      if (existing.password_hash && existing.password_salt) {
+        const isMatch = this.verifyPassword(params.password.trim(), existing.password_hash, existing.password_salt);
+        if (!isMatch) {
+          return { error: 'Sai mật khẩu. Vui lòng nhập đúng mật khẩu đã lưu.' };
+        }
+      } else {
+        // User previously registered without password: set their chosen password now
+        const { hash, salt } = this.hashPassword(params.password.trim());
+        existing.password_hash = hash;
+        existing.password_salt = salt;
+      }
+
       existing.last_active = new Date().toISOString();
       if (params.google_auth_id && !existing.google_auth_id) {
         existing.google_auth_id = params.google_auth_id;
@@ -288,7 +310,8 @@ class Database {
       return { user: existing, isNew: false };
     }
 
-    // New User creation
+    // New User creation: require password and hash it
+    const { hash, salt } = this.hashPassword(params.password.trim());
     const id = `usr_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
     const nickname = params.suggestedNickname?.trim() || cleanEmail.split('@')[0] || 'Bạn nhỏ';
     const avatar = params.suggestedAvatar || '🌱';
@@ -299,6 +322,8 @@ class Database {
       email: cleanEmail,
       nickname,
       avatar,
+      password_hash: hash,
+      password_salt: salt,
       created_at: new Date().toISOString(),
       last_active: new Date().toISOString()
     };
