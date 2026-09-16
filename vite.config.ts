@@ -6,6 +6,9 @@ import {defineConfig} from 'vite';
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
+    // Keep source static files out of Vite's default `public/` so Vercel can
+    // use `public/` as the CDN output of `vite build --outDir public`.
+    publicDir: 'static',
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

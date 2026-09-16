@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
-import { GoogleGenAI } from '@google/genai';
+import OpenAI from 'openai';
 import dotenv from 'dotenv';
 import { db, UserRecord } from './server/db';
 import { classifyChatMessage, CLARIFICATION_PATTERNS } from './server/fastPathRouter';
@@ -11,7 +11,7 @@ import { getDailyNoteForDate } from './src/data/dailyNotes';
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 // Ensure uploads directories exist and serve statically
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
@@ -29,16 +29,88 @@ app.use('/uploads', express.static(UPLOADS_DIR));
 app.use((express as any).json({ limit: '10mb' }));
 app.use((express as any).urlencoded({ extended: true, limit: '10mb' }));
 
-// Lazy-initialize Gemini SDK
-let aiClient: GoogleGenAI | null = null;
-function getGeminiClient(): GoogleGenAI | null {
-  if (!process.env.GEMINI_API_KEY) {
+const GROK_PRIMARY_MODEL = 'grok-4.6';
+const GROK_FALLBACK_MODEL = 'grok-4.5';
+const GROK_TIMEOUT_MS = 25000;
+
+// Lazy-initialize xAI (Grok) client — OpenAI-compatible Responses API
+let grokClient: OpenAI | null = null;
+function getGrokClient(): OpenAI | null {
+  const apiKey = process.env.XAI_API_KEY;
+  if (!apiKey) {
     return null;
   }
-  if (!aiClient) {
-    aiClient = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  if (!grokClient) {
+    grokClient = new OpenAI({
+      apiKey,
+      baseURL: 'https://api.x.ai/v1',
+      timeout: GROK_TIMEOUT_MS,
+    });
   }
-  return aiClient;
+  return grokClient;
+}
+
+function extractGrokOutputText(response: {
+  output_text?: string | null;
+  output?: Array<{
+    type?: string;
+    content?: Array<{ type?: string; text?: string }>;
+  }>;
+}): string {
+  const direct = response.output_text?.trim();
+  if (direct) return direct;
+
+  const chunks: string[] = [];
+  for (const item of response.output ?? []) {
+    if (!Array.isArray(item.content)) continue;
+    for (const part of item.content) {
+      if ((part.type === 'output_text' || part.type === 'text') && part.text?.trim()) {
+        chunks.push(part.text.trim());
+      }
+    }
+  }
+  return chunks.join('\n').trim();
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(label)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function generateGrokReply(
+  client: OpenAI,
+  model: string,
+  systemInstruction: string,
+  history: Array<{ role: string; content: string }>
+): Promise<string> {
+  const response = await withTimeout(
+    client.responses.create({
+      model,
+      input: [
+        { role: 'system', content: systemInstruction },
+        ...history.map((m) => ({
+          role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+          content: m.content,
+        })),
+      ],
+      store: false,
+      temperature: 0.75,
+      max_output_tokens: 3500,
+    }),
+    GROK_TIMEOUT_MS,
+    `Grok API call timed out after ${GROK_TIMEOUT_MS / 1000}s (${model})`
+  );
+
+  return extractGrokOutputText(response);
 }
 
 const SYSTEM_INSTRUCTION = `
@@ -539,11 +611,13 @@ app.post('/api/chat', async (req, res) => {
     const userPrompt = lastMessage.content;
 
     // Last bot reply if available (for anti-repetition)
-    const lastBotMessage = [...messages].reverse().find((m: any) => m.role === 'model' || m.sender === 'bot');
+    const lastBotMessage = [...messages].reverse().find(
+      (m: any) => m.role === 'model' || m.role === 'assistant' || m.sender === 'bot'
+    );
     const lastBotReply = lastBotMessage?.content;
 
     // ⚡ FAST PATH & DECISION CLASSIFIER (Section 1, 5, 9, 10, 12, 14)
-    // Run priority evaluation before any complex reasoning or heavy Gemini API calls:
+    // Run priority evaluation before any complex reasoning or heavy Grok API calls:
     // 1. SAFETY MODE -> Immediate hotline & safe space
     // 2. CONCRETE REQUEST -> Normal AI
     // 3. EMOTIONAL / PROBLEM SIGNAL -> Normal AI
@@ -567,9 +641,9 @@ app.post('/api/chat', async (req, res) => {
       });
     }
 
-    // Check if Gemini is available
-    const gemini = getGeminiClient();
-    if (!gemini) {
+    // Check if Grok (xAI) is available
+    const grok = getGrokClient();
+    if (!grok) {
       // Use smart Vietnamese empathy engine with anti-repetition memory
       const reply = sanitizeBotReply(generateSmartFallback(userPrompt, supportMode, lastBotReply));
       return res.json({ reply, source: 'fallback' });
@@ -659,57 +733,42 @@ ${lastBotReply || '(Chưa có câu trả lời trước)'}
 
     contextualInstruction += antiRepetitionBlock;
 
-    // Convert previous messages to contents format (up to last 20 turns for deep context tracking)
-    const formattedContents = messages.slice(-20).map((m: { role: string; content: string }) => ({
-      role: m.role === 'user' ? 'user' : 'model',
-      parts: [{ text: m.content }]
+    // Keep the last 20 turns for conversation context (OpenAI-compatible roles)
+    const conversationHistory = messages.slice(-20).map((m: { role: string; content: string }) => ({
+      role: m.role === 'user' ? 'user' : 'assistant',
+      content: m.content
     }));
 
     try {
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Gemini API call timed out after 25s')), 25000)
-      );
-
       let rawResponseText = '';
 
-      // 1. Try modern Gemini Flash (gemini-3.8-flash)
+      // 1. Try current Grok chat model
       try {
-        const geminiCall = gemini.models.generateContent({
-          model: 'gemini-3.8-flash',
-          contents: formattedContents,
-          config: {
-            systemInstruction: contextualInstruction,
-            temperature: 0.75,
-            maxOutputTokens: 3500,
-          }
-        });
-
-        const response = await Promise.race([geminiCall, timeoutPromise]);
-        rawResponseText = response.text || '';
+        rawResponseText = await generateGrokReply(
+          grok,
+          GROK_PRIMARY_MODEL,
+          contextualInstruction,
+          conversationHistory
+        );
       } catch (primaryError) {
-        console.warn('Primary Gemini Flash (gemini-3.8-flash) error, attempting fallback alias (gemini-flash-latest):', primaryError);
-        
-        // 2. Retry with gemini-flash-latest alias
-        const retryCall = gemini.models.generateContent({
-          model: 'gemini-flash-latest',
-          contents: formattedContents,
-          config: {
-            systemInstruction: contextualInstruction,
-            temperature: 0.75,
-            maxOutputTokens: 3500,
-          }
-        });
-        const retryResponse = await Promise.race([retryCall, timeoutPromise]);
-        rawResponseText = retryResponse.text || '';
+        console.warn(`Primary Grok model (${GROK_PRIMARY_MODEL}) error, retrying ${GROK_FALLBACK_MODEL}:`, primaryError);
+
+        // 2. Retry with previous stable Grok chat model
+        rawResponseText = await generateGrokReply(
+          grok,
+          GROK_FALLBACK_MODEL,
+          contextualInstruction,
+          conversationHistory
+        );
       }
 
       const replyText = sanitizeBotReply(
         rawResponseText || generateSmartFallback(userPrompt, supportMode, lastBotReply),
         recentResponseMemory?.history
       );
-      return res.json({ reply: replyText, source: 'gemini' });
+      return res.json({ reply: replyText, source: 'grok' });
     } catch (apiError: unknown) {
-      console.warn('Gemini API call caught error, smoothly returning warm empathetic fallback:', apiError);
+      console.warn('Grok API call caught error, smoothly returning warm empathetic fallback:', apiError);
       const fallbackReply = sanitizeBotReply(
         generateSmartFallback(userPrompt, supportMode, lastBotReply),
         recentResponseMemory?.history
@@ -1748,7 +1807,8 @@ app.post('/api/user/progress', requireAuth, (req, res) => {
   }
 });
 
-// Serve frontend: Vite middleware in dev, static files in prod
+// Serve frontend: Vite middleware in dev, static files in prod.
+// On Vercel, `public/` is served by the CDN and `express.static()` is ignored.
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
@@ -1767,7 +1827,16 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running at http://0.0.0.0:${PORT}`);
+    if (process.env.XAI_API_KEY) {
+      console.log(`Chatbot: Grok ready (${GROK_PRIMARY_MODEL} via api.x.ai)`);
+    } else {
+      console.warn('Chatbot: XAI_API_KEY is missing — using local warm fallback. Add it to .env (see .env.example).');
+    }
   });
 }
 
-startServer();
+export default app;
+
+if (!process.env.VERCEL) {
+  startServer();
+}
