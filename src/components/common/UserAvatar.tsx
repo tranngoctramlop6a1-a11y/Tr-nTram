@@ -57,13 +57,27 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
     );
   }
 
+  // Check if avatar is strictly a short emoji or symbol (NEVER render base64 or raw paths as text)
+  const isShortEmoji = Boolean(
+    avatar &&
+    avatar.trim().length > 0 &&
+    avatar.trim().length <= 6 &&
+    !isImageAvatar(avatar) &&
+    !avatar.includes('/') &&
+    !avatar.includes(';') &&
+    !avatar.includes(':') &&
+    !avatar.includes('+') &&
+    !avatar.includes('=') &&
+    !avatar.includes(',')
+  );
+
   // If avatar is an emoji or short symbol
-  if (avatar && avatar.trim().length > 0) {
+  if (isShortEmoji && avatar) {
     return (
       <div
         className={`relative inline-flex items-center justify-center shrink-0 select-none bg-teal-50/90 text-teal-900 border border-teal-100/70 shadow-2xs ${sizeConfig.container} ${sizeConfig.text} ${rounded} ${className}`}
       >
-        <span>{avatar}</span>
+        <span>{avatar.trim()}</span>
       </div>
     );
   }

@@ -6,70 +6,63 @@ import {
   PlantRewardItem
 } from '../../types';
 
-// List of emotions for the Emotion Bar
+// List of emotions for the Emotion Bar (Strict mapping per requirement)
 export const PLANT_EMOTIONS: PlantEmotionOption[] = [
   {
     id: 'happy',
     emoji: '😊',
     label: 'Vui',
     weatherInfluence: 'sunny',
-    description: 'Trời hửng nắng ấm, cây đung đưa hân hoan'
+    description: 'Bầu trời xanh sáng, mặt trời to ấm áp phủ ánh nắng chan hòa'
   },
   {
     id: 'fine',
     emoji: '🙂',
     label: 'Ổn',
-    weatherInfluence: 'gentle_sun',
-    description: 'Nắng nhẹ dịu êm, một ngày thong thả'
+    weatherInfluence: 'cloudy',
+    description: 'Bầu trời xanh thanh bình, mây pastel trôi êm đềm dịu nhẹ'
   },
   {
     id: 'neutral',
     emoji: '😐',
     label: 'Bình thường',
-    weatherInfluence: 'cloudy',
-    description: 'Mây lững lờ trôi, gió thổi êm đềm'
-  },
-  {
-    id: 'sad',
-    emoji: '😔',
-    label: 'Hơi buồn',
-    weatherInfluence: 'rainy',
-    description: 'Cơn mưa tưới mát cho đất và cây thêm tươi'
+    weatherInfluence: 'windy',
+    description: 'Gió nhẹ 3D lướt qua, lá cây và những chiếc lá bay đung đưa'
   },
   {
     id: 'stressed',
     emoji: '😣',
     label: 'Áp lực',
     weatherInfluence: 'rainy',
-    description: 'Cơn mưa rào trút bỏ bớt gánh nặng trên vai'
+    description: 'Mưa rơi tí tách nhiều lớp, tưới mát gột rửa bớt gánh nặng'
   },
   {
-    id: 'anxious',
-    emoji: '😰',
-    label: 'Lo lắng',
-    weatherInfluence: 'cloudy',
-    description: 'Mây êm che chở, cây tỏa sáng ấm áp bên bạn'
+    id: 'sad',
+    emoji: '😞',
+    label: 'Suy sụp',
+    weatherInfluence: 'heavy_rain',
+    description: 'Mưa to nặng hạt, nhưng cây vẫn vững vàng kiên cường đứng đây'
   },
   {
     id: 'angry',
     emoji: '😡',
     label: 'Bực mình',
-    weatherInfluence: 'cloudy',
-    description: 'Gió mát rượi thổi qua xua tan bực bội'
+    weatherInfluence: 'strong_wind',
+    description: 'Gió lớn cuộn thổi, cây nghiêng mình rồi lại đứng thẳng mạnh mẽ'
   },
   {
     id: 'lonely',
     emoji: '🥺',
     label: 'Cô đơn',
     weatherInfluence: 'night',
-    description: 'Đêm thanh bình, cây luôn ở cạnh bạn'
+    description: 'Màn đêm yên bình, vầng trăng lớn chiếu ánh sáng dịu lành'
   },
   {
     id: 'unknown',
     emoji: '🤷',
     label: 'Không biết',
     weatherInfluence: 'rainbow',
-    description: 'Cầu vồng bất ngờ hiện lên sau làn mây'
+    description: 'Cầu vồng lớn lung linh dần xuất hiện với muôn sắc màu kỳ diệu'
   }
 ];
 
@@ -85,53 +78,74 @@ export const WEATHER_CONFIG: Record<
   }
 > = {
   sunny: {
-    name: 'Nắng ấm',
+    name: 'Nắng to',
     emoji: '☀️',
-    skyClass: 'from-amber-100/70 via-sky-50 to-[#FAF8F5]',
-    description: 'Tia nắng chan hòa, lá cây bừng sáng',
-    ambience: 'Ấm áp & tràn đầy hy vọng'
-  },
-  gentle_sun: {
-    name: 'Nắng nhẹ',
-    emoji: '🌤️',
-    skyClass: 'from-amber-50/80 via-emerald-50/40 to-[#FAF8F5]',
-    description: 'Nắng xuyên qua kẽ lá, bầu trời dễ chịu',
-    ambience: 'Dịu dàng & thư thái'
+    skyClass: 'from-amber-200/80 via-sky-100 to-[#FAF8F5]',
+    description: 'Bầu trời xanh sáng, mặt trời rực rỡ tỏa muôn tia nắng',
+    ambience: 'Ấm áp, bừng sáng & tươi mới'
   },
   cloudy: {
-    name: 'Nhiều mây',
+    name: 'Mây xanh nhẹ',
     emoji: '☁️',
-    skyClass: 'from-slate-100 via-sky-50/60 to-[#FAF8F5]',
-    description: 'Những đám mây xốp che chở nhẹ nhàng',
-    ambience: 'Bình yên & khoan thai'
+    skyClass: 'from-sky-200/85 via-blue-50 to-[#FAF8F5]',
+    description: 'Bầu trời xanh dịu mát, những áng mây pastel thong thả trôi',
+    ambience: 'Bình yên, thư thả & khoan thai'
+  },
+  windy: {
+    name: 'Gió nhẹ',
+    emoji: '🍃',
+    skyClass: 'from-emerald-100/70 via-sky-100/50 to-[#FAF8F5]',
+    description: 'Luồng gió mát mềm mại, lá bay lững lờ theo làn gió',
+    ambience: 'Nhẹ nhàng, êm dịu & thảnh thơi'
   },
   rainy: {
-    name: 'Mưa mát lành',
+    name: 'Trời mưa',
     emoji: '🌧️',
-    skyClass: 'from-sky-100/90 via-teal-50/60 to-[#FAF8F5]',
-    description: 'Mưa tưới cho chậu cây được uống nước',
-    ambience: 'Lắng đọng & xoa dịu'
+    skyClass: 'from-slate-300/80 via-sky-200/70 to-[#FAF8F5]',
+    description: 'Cơn mưa rơi đều đặn nhiều lớp, đất ẩm và lá cây mát rượi',
+    ambience: 'Xoa dịu, lắng đọng & tưới mát'
+  },
+  heavy_rain: {
+    name: 'Mưa to',
+    emoji: '⛈️',
+    skyClass: 'from-slate-400/90 via-sky-300/80 to-[#FAF8F5]',
+    description: 'Mưa giông nặng hạt, cây đung đưa kiên cường trong giọt nước',
+    ambience: 'Vững chãi, chở che & kiên cường'
+  },
+  strong_wind: {
+    name: 'Gió lớn',
+    emoji: '🌪️',
+    skyClass: 'from-amber-100/60 via-slate-300/70 to-[#FAF8F5]',
+    description: 'Gió cuộn từng đợt, cây kiên định nghiêng rồi lại đứng thẳng',
+    ambience: 'Mạnh mẽ, kiên cường & bứt phá'
   },
   night: {
-    name: 'Đêm dịu',
+    name: 'Ban đêm',
     emoji: '🌙',
-    skyClass: 'from-indigo-950/20 via-slate-100 to-[#FAF8F5]',
-    description: 'Ánh trăng êm ả, đốm sáng nhỏ bên gốc cây',
-    ambience: 'Tĩnh lặng & vỗ về'
-  },
-  starry_night: {
-    name: 'Đêm đầy sao',
-    emoji: '⭐',
-    skyClass: 'from-indigo-900/25 via-sky-100/40 to-[#FAF8F5]',
-    description: 'Những đốm sao nhỏ lấp lánh trên vòm lá',
-    ambience: 'Kỳ diệu & mơ mộng'
+    skyClass: 'from-indigo-950/60 via-slate-900/40 to-[#FAF8F5]',
+    description: 'Bầu trời đêm xanh thẳm, vầng trăng lớn tỏa ánh dịu mát',
+    ambience: 'Tĩnh lặng, vỗ về & ấm lòng'
   },
   rainbow: {
     name: 'Cầu vồng',
     emoji: '🌈',
-    skyClass: 'from-pink-100/50 via-sky-100/60 to-[#FAF8F5]',
-    description: 'Dải sắc màu rạng rỡ ôm trọn góc vườn',
-    ambience: 'Bất ngờ & tươi sáng'
+    skyClass: 'from-pink-100/70 via-sky-100/70 to-[#FAF8F5]',
+    description: 'Cầu vồng lớn lung linh vắt ngang bầu trời với muôn hạt sáng',
+    ambience: 'Kỳ diệu, hy vọng & lung linh'
+  },
+  gentle_sun: {
+    name: 'Nắng nhẹ',
+    emoji: '🌤️',
+    skyClass: 'from-amber-100/70 via-emerald-50/40 to-[#FAF8F5]',
+    description: 'Nắng xuyên qua kẽ lá, bầu trời dễ chịu',
+    ambience: 'Dịu dàng & thư thái'
+  },
+  starry_night: {
+    name: 'Đêm đầy sao',
+    emoji: '⭐',
+    skyClass: 'from-indigo-900/50 via-sky-100/40 to-[#FAF8F5]',
+    description: 'Những đốm sao nhỏ lấp lánh trên vòm lá',
+    ambience: 'Kỳ diệu & mơ mộng'
   }
 };
 
@@ -325,18 +339,73 @@ export function getStageDetails(stage: number): {
   }
 }
 
-// Pool of possible surprise gifts
+// Pool of possible surprise gifts (Both physical decorations and heartwarming advice)
 export const SURPRISE_REWARDS_POOL: Omit<PlantRewardItem, 'id' | 'createdAt'>[] = [
+  // ── Animals ──
   {
     type: 'decoration',
     title: 'Chú bướm nhỏ xinh',
     emoji: '🦋',
-    content: 'Một chú bướm bay đến đậu bên chậu cây của bạn.',
+    content: 'Một chú bướm rực rỡ bay dập dờn đến dạo chơi quanh cái cây của bạn.',
     decoration: {
       id: 'dec_butterfly',
       type: 'butterfly',
-      name: 'Chú bướm dạo chơi',
+      name: 'Chú bướm nhỏ',
       emoji: '🦋',
+      unlockedAt: ''
+    }
+  },
+  {
+    type: 'decoration',
+    title: 'Chú ong chăm chỉ',
+    emoji: '🐝',
+    content: 'Một chú ong vàng vo ve bay lượn tìm mật ngọt bên chồi lá non.',
+    decoration: {
+      id: 'dec_bee',
+      type: 'bee',
+      name: 'Chú ong nhỏ',
+      emoji: '🐝',
+      unlockedAt: ''
+    }
+  },
+  {
+    type: 'decoration',
+    title: 'Chú chim nhỏ ghé thăm',
+    emoji: '🐦',
+    content: 'Một chú chim non vỗ cánh bay đến hót líu lo bên chậu cây thân yêu.',
+    decoration: {
+      id: 'dec_bird',
+      type: 'bird',
+      name: 'Chim non ríu rít',
+      emoji: '🐦',
+      unlockedAt: ''
+    }
+  },
+  {
+    type: 'decoration',
+    title: 'Chú bọ rùa may mắn',
+    emoji: '🐞',
+    content: 'Một chú bọ rùa đỏ chấm bi nhỏ xíu ghé đậu trên phiến lá xanh tươi.',
+    decoration: {
+      id: 'dec_ladybug',
+      type: 'ladybug',
+      name: 'Bọ rùa may mắn',
+      emoji: '🐞',
+      unlockedAt: ''
+    }
+  },
+
+  // ── Garden Nature & Objects ──
+  {
+    type: 'decoration',
+    title: 'Bông hoa dại nở rộ',
+    emoji: '🌸',
+    content: 'Một nụ hoa nhỏ tươi tắn hé nở bên mép chậu cây tỏa hương êm dịu.',
+    decoration: {
+      id: 'dec_flower',
+      type: 'flower',
+      name: 'Hoa dại nở rộ',
+      emoji: '🌸',
       unlockedAt: ''
     }
   },
@@ -344,7 +413,7 @@ export const SURPRISE_REWARDS_POOL: Omit<PlantRewardItem, 'id' | 'createdAt'>[] 
     type: 'decoration',
     title: 'Cây nấm tí hon',
     emoji: '🍄',
-    content: 'Một chiếc nấm chấm bi mọc lên bên gốc cây ấm áp.',
+    content: 'Một chiếc nấm chấm bi mọc lên bên gốc đất mềm xốp ấm áp.',
     decoration: {
       id: 'dec_mushroom',
       type: 'mushroom',
@@ -355,14 +424,14 @@ export const SURPRISE_REWARDS_POOL: Omit<PlantRewardItem, 'id' | 'createdAt'>[] 
   },
   {
     type: 'decoration',
-    title: 'Bông hoa dại xinh',
-    emoji: '🌸',
-    content: 'Một nụ hoa nhỏ nở hé bên mép chậu cây.',
+    title: 'Đám mây bồng bềnh',
+    emoji: '☁️',
+    content: 'Một cụm mây trắng êm ái trôi lững lờ che bóng râm mát cho vườn.',
     decoration: {
-      id: 'dec_flower',
-      type: 'flower',
-      name: 'Bông hoa dại',
-      emoji: '🌸',
+      id: 'dec_cloud',
+      type: 'cloud',
+      name: 'Mây xốp êm đềm',
+      emoji: '☁️',
       unlockedAt: ''
     }
   },
@@ -370,7 +439,7 @@ export const SURPRISE_REWARDS_POOL: Omit<PlantRewardItem, 'id' | 'createdAt'>[] 
     type: 'decoration',
     title: 'Đốm sao may mắn',
     emoji: '⭐',
-    content: 'Một ngôi sao nhỏ chiếu sáng dịu dàng quanh bạn.',
+    content: 'Một ngôi sao nhỏ lấp lánh tỏa ánh sáng kỳ diệu sưởi ấm tâm hồn bạn.',
     decoration: {
       id: 'dec_star',
       type: 'star',
@@ -381,75 +450,149 @@ export const SURPRISE_REWARDS_POOL: Omit<PlantRewardItem, 'id' | 'createdAt'>[] 
   },
   {
     type: 'decoration',
-    title: 'Đám mây bông',
-    emoji: '☁️',
-    content: 'Một cụm mây trắng mềm mại bay lướt qua vườn.',
+    title: 'Vầng trăng bạc nhỏ',
+    emoji: '🌙',
+    content: 'Vầng trăng lưỡi liềm nhỏ nhắn mang ánh sáng dịu lành tới góc vườn.',
     decoration: {
-      id: 'dec_cloud',
-      type: 'cloud',
-      name: 'Đám mây xốp',
-      emoji: '☁️',
+      id: 'dec_moon',
+      type: 'moon',
+      name: 'Vầng trăng nhỏ',
+      emoji: '🌙',
       unlockedAt: ''
     }
   },
   {
     type: 'decoration',
-    title: 'Chú bọ rùa may mắn',
-    emoji: '🐞',
-    content: 'Một chú bọ rùa đỏ nhỏ nhắn ghé thăm chiếc lá xanh.',
-    decoration: {
-      id: 'dec_ladybug',
-      type: 'ladybug',
-      name: 'Bọ rùa đỏ',
-      emoji: '🐞',
-      unlockedAt: ''
-    }
-  },
-  {
-    type: 'decoration',
-    title: 'Mảnh cầu vồng',
+    title: 'Mảnh cầu vồng mini',
     emoji: '🌈',
-    content: 'Cầu vồng nhỏ tí hon lấp lánh phản chiếu sau cơn mưa.',
+    content: 'Cầu vồng nhỏ tí hon lấp lánh mang theo lời chúc một ngày an lành.',
     decoration: {
       id: 'dec_rainbow',
       type: 'rainbow',
-      name: 'Mảnh cầu vồng',
+      name: 'Cầu vồng mini',
       emoji: '🌈',
       unlockedAt: ''
     }
   },
   {
-    type: 'wish',
-    title: 'Thẻ bài dịu dàng',
-    emoji: '💌',
-    content: '“Hôm nay bạn đã làm rất tốt rồi. Hãy tự hào vì mình đã luôn cố gắng.”'
+    type: 'decoration',
+    title: 'Vầng hạt sáng lấp lánh',
+    emoji: '✨',
+    content: 'Những hạt bụi sáng diệu kỳ bay lượn thắp sáng xung quanh tán cây.',
+    decoration: {
+      id: 'dec_sparkles',
+      type: 'sparkles',
+      name: 'Hạt sáng lấp lánh',
+      emoji: '✨',
+      unlockedAt: ''
+    }
   },
   {
-    type: 'sticker',
-    title: 'Huy hiệu Mầm Xanh',
-    emoji: '🌱',
-    content: '“Cứ lớn lên từ từ, không ai hối thúc cậu cả.”'
+    type: 'decoration',
+    title: 'Bong bóng ước nguyện',
+    emoji: '🎈',
+    content: 'Một quả bóng bay sắc màu nhẹ nhàng bay lượn trong làn gió êm.',
+    decoration: {
+      id: 'dec_balloon',
+      type: 'balloon',
+      name: 'Bong bóng sắc màu',
+      emoji: '🎈',
+      unlockedAt: ''
+    }
   },
   {
-    type: 'quote',
-    title: 'Gió thơm mùa hạ',
+    type: 'decoration',
+    title: 'Chiếc lá may mắn',
     emoji: '🍃',
-    content: '“Mỗi cảm xúc ghé thăm đều mang một lời nhắn. Hãy lắng nghe và để nó trôi qua tự nhiên.”'
+    content: 'Chiếc lá non bốn mùa mang lại niềm tin và sự nhẹ nhõm cho tâm trí.',
+    decoration: {
+      id: 'dec_leaves',
+      type: 'leaves',
+      name: 'Chiếc lá may mắn',
+      emoji: '🍃',
+      unlockedAt: ''
+    }
+  },
+
+  // ── Heartwarming Advice & Wisdom Notes (Strict: No apply button, just read & acknowledge) ──
+  {
+    type: 'advice',
+    title: 'Lời nhắn dịu dàng',
+    emoji: '💌',
+    content: '“Không cần giải quyết hết mọi chuyện trong một ngày.”'
+  },
+  {
+    type: 'advice',
+    title: 'Lời nhắn từ cây nhỏ',
+    emoji: '🌱',
+    content: '“Cứ bước từng bước nhỏ thôi, hôm nay cậu đã làm rất tốt rồi.”'
+  },
+  {
+    type: 'advice',
+    title: 'Lời nhắn lắng đọng',
+    emoji: '💌',
+    content: '“Mệt thì dừng lại hít một hơi thật sâu, không ai hối thúc cậu cả.”'
+  },
+  {
+    type: 'advice',
+    title: 'Lời dặn mùa hạ',
+    emoji: '🍃',
+    content: '“Mỗi cảm xúc ghé qua đều có lý do, hãy dịu dàng với chính mình nhé.”'
+  },
+  {
+    type: 'advice',
+    title: 'Lời động viên ấm áp',
+    emoji: '🌻',
+    content: '“Trời có giông bão thế nào thì chậu cây nhỏ này vẫn luôn đứng vững đợi cậu ở đây.”'
+  },
+  {
+    type: 'advice',
+    title: 'Vỗ về trái tim',
+    emoji: '✨',
+    content: '“Đừng quá khắt khe với bản thân, cậu xứng đáng được ôm ấp và bình yên.”'
+  },
+  {
+    type: 'advice',
+    title: 'Thả lỏng suy nghĩ',
+    emoji: '🍵',
+    content: '“Một chuyện một lúc nhé, đừng gom cả thế giới đặt lên vai mình.”'
   }
 ];
 
-// Pick a surprise reward that hasn't been unlocked if possible
-export function pickRandomReward(unlockedIds: string[]): PlantRewardItem {
-  const available = SURPRISE_REWARDS_POOL.filter(
-    (r) => !r.decoration || !unlockedIds.includes(r.decoration.id)
-  );
+// Pick a surprise reward with anti-repetition memory
+export function pickSmartReward(
+  unlockedIds: string[] = [],
+  recentRewardHistory: string[] = []
+): PlantRewardItem {
+  // Recent pool exclusions (last 4 items)
+  const recentSet = new Set(recentRewardHistory.slice(0, 4));
 
-  const chosen =
-    available.length > 0
-      ? available[Math.floor(Math.random() * available.length)]
-      : SURPRISE_REWARDS_POOL[Math.floor(Math.random() * SURPRISE_REWARDS_POOL.length)];
+  // Eligible pool prioritizing items not given recently and unacquired decorations
+  let candidates = SURPRISE_REWARDS_POOL.filter((r) => {
+    if (r.decoration) {
+      // Prioritize unacquired decorations
+      if (unlockedIds.includes(r.decoration.id)) return false;
+    }
+    // Avoid very recent repeats
+    const key = r.decoration ? r.decoration.id : r.title;
+    return !recentSet.has(key);
+  });
 
+  // If candidate list exhausted, fall back to non-recent advice or general pool
+  if (candidates.length === 0) {
+    candidates = SURPRISE_REWARDS_POOL.filter((r) => {
+      const key = r.decoration ? r.decoration.id : r.title;
+      return !recentSet.has(key);
+    });
+  }
+
+  if (candidates.length === 0) {
+    candidates = SURPRISE_REWARDS_POOL;
+  }
+
+  const chosen = candidates[Math.floor(Math.random() * candidates.length)];
   const now = new Date().toISOString();
+
   return {
     ...chosen,
     id: 'reward_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
@@ -459,3 +602,7 @@ export function pickRandomReward(unlockedIds: string[]): PlantRewardItem {
       : undefined
   };
 }
+
+// Backward compatibility alias
+export const pickRandomReward = (unlockedIds: string[]): PlantRewardItem =>
+  pickSmartReward(unlockedIds, []);

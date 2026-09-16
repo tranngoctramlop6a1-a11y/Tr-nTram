@@ -17,7 +17,6 @@ import { ChatbotView } from './components/ChatbotView';
 import { JournalView } from './components/JournalView';
 import { EmotionPlantView } from './components/plant/EmotionPlantView';
 import { SelfLettersView } from './components/letters/SelfLettersView';
-import { FloatingChatbotWidget } from './components/FloatingChatbotWidget';
 import { FastMathGame } from './components/FastMathGame';
 import { BotMascot } from './components/BotMascot';
 import { Footer } from './components/Footer';
@@ -599,7 +598,7 @@ function AppContent() {
         )}
 
         {/* Tab 3: Scenarios */}
-        {currentTab === 'scenarios' && <ScenariosView />}
+        {currentTab === 'scenarios' && <ScenariosView currentUserId={user?.id} />}
 
         {/* Tab 4: Quizzes */}
         {currentTab === 'quizzes' && <QuizzesView currentUserId={user?.id} />}
@@ -631,12 +630,6 @@ function AppContent() {
         {/* Tab: 📜 Bức thư cho bản thân (Letters to My Future Self) */}
         {currentTab === 'letters' && <SelfLettersView />}
       </main>
-
-      {/* Floating Chatbot Widget for all other pages (Bottom Right) */}
-      <FloatingChatbotWidget
-        onOpenFullChat={() => setCurrentTab('chatbot')}
-        isFullChatActive={currentTab === 'chatbot'}
-      />
 
       {/* Floating Mini Game: 🧠 Phép tính nhanh (Bottom Left) */}
       <FastMathGame />

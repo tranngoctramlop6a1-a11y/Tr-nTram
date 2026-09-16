@@ -3,7 +3,6 @@ import { Confession, Comment } from '../types';
 import { getRandomNickname, checkContentModeration } from '../utils/moderation';
 import { formatRealTimeAgo } from '../utils/timeAgo';
 import { getUserProgress, saveUserProgress } from '../utils/userProgressStore';
-import { StickyNoteWall } from './StickyNoteWall';
 import { 
   Heart, 
   Users, 
@@ -217,9 +216,6 @@ export const ConfessionsView: React.FC<ConfessionsViewProps> = ({
           </button>
         </div>
       </div>
-
-      {/* Sticky Notes Wall ("Bạn không cô đơn") */}
-      <StickyNoteWall />
 
       {/* Filter and Search Bar */}
       <div className="bg-white p-4 sm:p-5 rounded-2xl border border-rose-100/80 shadow-xs mb-8 space-y-4">

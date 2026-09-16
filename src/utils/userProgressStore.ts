@@ -7,11 +7,21 @@
  */
 
 export interface ScenarioHistoryRecord {
+  id?: string;
+  questionId?: string;
   scenarioId: string;
   category: string;
-  setId?: string;
-  chosenOption: 'A' | 'B' | 'C' | 'D';
+  question?: string;
+  chosenOption: 'A' | 'B' | 'C' | 'D' | 'E';
+  chosenOptionId?: 'A' | 'B' | 'C' | 'D' | 'E';
+  chosenOptionText?: string;
+  helpAnalysis?: string;
+  watchOut?: string;
+  tryNext?: string;
+  date?: string; // YYYY-MM-DD
   completedAt: string; // ISO timestamp
+  source?: string;
+  setId?: string;
 }
 
 export interface QuizHistoryRecord {
@@ -73,6 +83,50 @@ export function recordQuizResult(
 
   saveUserProgress(userId, {
     quizHistory: [newRecord, ...(current.quizHistory || [])]
+  });
+}
+
+export function recordScenarioResult(
+  userId: string | undefined,
+  record: {
+    questionId: string;
+    scenarioId: string;
+    category: string;
+    question: string;
+    chosenOptionId: 'A' | 'B' | 'C' | 'D' | 'E';
+    chosenOptionText: string;
+    helpAnalysis: string;
+    watchOut: string;
+    tryNext: string;
+    date: string;
+    source?: string;
+  }
+): void {
+  const current = getUserProgress(userId);
+  const newRecord: ScenarioHistoryRecord = {
+    id: `scenhist_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    questionId: record.questionId,
+    scenarioId: record.scenarioId,
+    category: record.category,
+    question: record.question,
+    chosenOption: record.chosenOptionId,
+    chosenOptionId: record.chosenOptionId,
+    chosenOptionText: record.chosenOptionText,
+    helpAnalysis: record.helpAnalysis,
+    watchOut: record.watchOut,
+    tryNext: record.tryNext,
+    date: record.date,
+    source: record.source || 'question_bank',
+    completedAt: new Date().toISOString()
+  };
+
+  // Filter out older duplicate answers for the exact same question on this same day
+  const existingFiltered = (current.scenarioHistory || []).filter(
+    (item) => !(item.questionId === record.questionId && item.date === record.date)
+  );
+
+  saveUserProgress(userId, {
+    scenarioHistory: [newRecord, ...existingFiltered]
   });
 }
 
@@ -292,6 +346,23 @@ export async function migrateAllGuestDataToUser(userId: string, tokenParam?: str
     localStorage.removeItem(guestCapsuleKey);
     localStorage.removeItem(guestPlantKey);
     localStorage.removeItem(getProgressKey(undefined));
+
+    // Migrate & clean up guest daily scenario assignments
+    const guestDailyKeys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('teen_daily_scen_guest_')) {
+        guestDailyKeys.push(key);
+      }
+    }
+    guestDailyKeys.forEach(k => {
+      const val = localStorage.getItem(k);
+      if (val) {
+        const userKey = k.replace('teen_daily_scen_guest_', `teen_daily_scen_${userId}_`);
+        localStorage.setItem(userKey, val);
+      }
+      localStorage.removeItem(k);
+    });
 
     window.dispatchEvent(new CustomEvent('teen_account_changed'));
     return {

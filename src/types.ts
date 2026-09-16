@@ -181,6 +181,9 @@ export interface ChatMessage {
   isHelpful?: boolean;
   topic?: string;
   suggestModes?: boolean;
+  status?: 'sending' | 'sent' | 'error';
+  errorType?: 'network' | 'timeout' | 'api' | 'empty' | 'abort' | 'unknown';
+  errorMessage?: string;
 }
 
 export interface ChatTopicItem {
@@ -246,12 +249,19 @@ export interface Confession {
 }
 
 export interface ScenarioOption {
-  id: 'A' | 'B' | 'C' | 'D';
+  id: 'A' | 'B' | 'C' | 'D' | 'E';
   text: string;
-  analysis: string;
-  pros: string;
-  cons: string;
-  takeaway: string;
+  // 💭 “Cách bạn chọn có thể giúp bạn…”
+  helpAnalysis?: string;
+  // ⚠️ “Điều cần để ý…”
+  watchOut?: string;
+  // 🌱 “Bạn có thể thử…”
+  tryNext?: string;
+  // Backward compatibility
+  analysis?: string;
+  pros?: string;
+  cons?: string;
+  takeaway?: string;
 }
 
 export interface Scenario {
@@ -261,6 +271,21 @@ export interface Scenario {
   description: string;
   options: ScenarioOption[];
   generalAdvice: string;
+}
+
+export interface DailyScenarioQuestion {
+  id: string;
+  scenarioId: string;
+  categoryTitle: string;
+  categoryIcon: string;
+  question: string;
+  situationContext: string;
+  options: ScenarioOption[];
+  tags?: string[];
+  difficulty?: 'easy' | 'medium' | 'deep';
+  createdAt: string;
+  active: boolean;
+  source?: 'question_bank' | 'ai';
 }
 
 export interface QuizQuestion {
@@ -340,24 +365,27 @@ export interface AuthUser {
 export type SeedGrowthEffect = 'flower' | 'leaf' | 'branch' | 'root' | 'fruit' | 'firefly' | 'sprout';
 
 export type PlantWeatherType = 
-  | 'sunny' 
-  | 'rainy' 
-  | 'cloudy' 
+  | 'sunny'        // ☀️ Nắng to (😊 Vui)
+  | 'cloudy'       // ☁️ Mây xanh (🙂 Ổn)
+  | 'windy'        // 🍃 Gió nhẹ (😐 Bình thường)
+  | 'rainy'        // 🌧️ Mưa (😣 Áp lực)
+  | 'heavy_rain'   // ⛈️ Mưa to (😞 Suy sụp)
+  | 'strong_wind'  // 🌪️ Gió lớn (😡 Bực mình)
+  | 'night'        // 🌙 Ban đêm (🥺 Cô đơn)
+  | 'rainbow'      // 🌈 Cầu vồng (🤷 Không biết)
   | 'gentle_sun' 
-  | 'night' 
-  | 'rainbow' 
   | 'starry_night';
 
 export type PlantEmotionType = 
   | 'happy'       // 😊 Vui
   | 'fine'        // 🙂 Ổn
   | 'neutral'     // 😐 Bình thường
-  | 'sad'         // 😔 Hơi buồn
   | 'stressed'    // 😣 Áp lực
-  | 'anxious'     // 😰 Lo lắng
+  | 'sad'         // 😞 Suy sụp
   | 'angry'       // 😡 Bực mình
   | 'lonely'      // 🥺 Cô đơn
-  | 'unknown';    // 🤷 Không biết
+  | 'unknown'     // 🤷 Không biết
+  | 'anxious';    // 😰 Lo lắng (legacy/extra)
 
 export interface PlantEmotionOption {
   id: PlantEmotionType;
@@ -367,9 +395,24 @@ export interface PlantEmotionOption {
   description: string;
 }
 
+export type DecorationType = 
+  | 'butterfly' 
+  | 'bee'
+  | 'bird'
+  | 'ladybug'
+  | 'flower' 
+  | 'mushroom' 
+  | 'moon' 
+  | 'cloud' 
+  | 'star' 
+  | 'rainbow' 
+  | 'sparkles'
+  | 'balloon'
+  | 'leaves';
+
 export interface GardenDecorationItem {
   id: string;
-  type: 'butterfly' | 'flower' | 'mushroom' | 'moon' | 'cloud' | 'star' | 'rainbow' | 'ladybug';
+  type: DecorationType;
   name: string;
   emoji: string;
   unlockedAt: string;
@@ -377,7 +420,7 @@ export interface GardenDecorationItem {
 
 export interface PlantRewardItem {
   id: string;
-  type: 'sticker' | 'wish' | 'quote' | 'decoration';
+  type: 'sticker' | 'wish' | 'quote' | 'decoration' | 'advice';
   title: string;
   content: string;
   emoji: string;
@@ -418,7 +461,9 @@ export interface FullPlantState {
   };
   dailyLogs: Record<string, DailyPlantLog>;
   unlockedDecorations: GardenDecorationItem[];
+  activeDecorations?: string[]; // IDs of items currently displayed in the garden
   rewards: PlantRewardItem[];
+  rewardHistory?: string[]; // IDs/types to avoid repetitive rewards
   pendingGift: boolean;
   lastVisitedDate?: string;
 }

@@ -7,15 +7,17 @@ import { PLANT_EMOTIONS, WEATHER_CONFIG } from './plantUtils';
 interface EmotionBarProps {
   selectedEmotion?: PlantEmotionType;
   onSelectEmotion: (emotion: PlantEmotionType) => void;
+  onRemoveEmotion?: () => void;
 }
 
 export const EmotionBar: React.FC<EmotionBarProps> = ({
   selectedEmotion,
-  onSelectEmotion
+  onSelectEmotion,
+  onRemoveEmotion
 }) => {
   return (
     <div className="w-full bg-white/80 backdrop-blur-xs rounded-3xl p-4 sm:p-5 border border-amber-100/90 shadow-xs space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <span className="text-base sm:text-lg">💭</span>
           <div>
@@ -29,10 +31,23 @@ export const EmotionBar: React.FC<EmotionBarProps> = ({
         </div>
 
         {selectedEmotion && (
-          <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200/80">
-            {WEATHER_CONFIG[PLANT_EMOTIONS.find(e => e.id === selectedEmotion)?.weatherInfluence || 'sunny'].emoji}{' '}
-            {WEATHER_CONFIG[PLANT_EMOTIONS.find(e => e.id === selectedEmotion)?.weatherInfluence || 'sunny'].name}
-          </span>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200/80">
+              {WEATHER_CONFIG[PLANT_EMOTIONS.find(e => e.id === selectedEmotion)?.weatherInfluence || 'sunny'].emoji}{' '}
+              {WEATHER_CONFIG[PLANT_EMOTIONS.find(e => e.id === selectedEmotion)?.weatherInfluence || 'sunny'].name}
+            </span>
+            {onRemoveEmotion && (
+              <button
+                type="button"
+                onClick={onRemoveEmotion}
+                className="text-[11px] font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 px-2.5 py-1 rounded-full flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                title="Gỡ hạt giống cảm xúc khỏi chậu"
+              >
+                <span>✕</span>
+                <span>Gỡ khỏi chậu</span>
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -44,7 +59,14 @@ export const EmotionBar: React.FC<EmotionBarProps> = ({
             <motion.button
               key={item.id}
               whileTap={{ scale: 0.95 }}
-              onClick={() => onSelectEmotion(item.id)}
+              onClick={() => {
+                if (isSelected && onRemoveEmotion) {
+                  onRemoveEmotion();
+                } else {
+                  onSelectEmotion(item.id);
+                }
+              }}
+              title={isSelected ? 'Nhấn để gỡ bỏ khỏi chậu' : item.description}
               className={`px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-2xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 cursor-pointer border select-none ${
                 isSelected
                   ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm ring-2 ring-emerald-400/40'
@@ -53,6 +75,11 @@ export const EmotionBar: React.FC<EmotionBarProps> = ({
             >
               <span className="text-base sm:text-lg leading-none">{item.emoji}</span>
               <span className="whitespace-nowrap">{item.label}</span>
+              {isSelected && (
+                <span className="text-[10px] bg-emerald-700/80 text-white px-1.5 py-0.2 rounded-full font-semibold ml-0.5">
+                  ✕
+                </span>
+              )}
             </motion.button>
           );
         })}

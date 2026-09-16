@@ -666,6 +666,56 @@ export const QUIZZES: Quiz[] = [
           { label: 'Từ việc so sánh với bạn bè cùng lớp', score: 3 },
           { label: 'Từ chính tiêu chuẩn khắt khe tự đặt ra cho mình', score: 4 }
         ]
+      },
+      {
+        id: 6,
+        question: 'Khi gặp một dạng bài tập hoặc đề thi quá khó không làm được, cảm xúc bên trong bạn thế nào?',
+        options: [
+          { label: 'Tạm gác lại làm câu khác, sau đó nhờ bạn bè hoặc thầy cô hướng dẫn', score: 1 },
+          { label: 'Hơi sốt ruột nhưng vẫn cố gắng tìm cách giải', score: 2 },
+          { label: 'Cảm thấy tức giận, thất vọng về bản thân và mất hết tự tin', score: 3 },
+          { label: 'Bật khóc hoặc muốn xé bỏ bài vở vì thấy mình bất lực, kém cỏi', score: 4 }
+        ]
+      },
+      {
+        id: 7,
+        question: 'Bạn có xu hướng trì hoãn bài tập đến sát giờ nộp mới cuống cuồng làm không?',
+        options: [
+          { label: 'Hiếm khi, mình luôn phân bổ thời gian hợp lý từ sớm', score: 1 },
+          { label: 'Đôi khi với những môn học mình không hứng thú', score: 2 },
+          { label: 'Khá thường xuyên, vừa trì hoãn vừa cảm thấy cắn rứt lương tâm', score: 3 },
+          { label: 'Luôn luôn nước đến chân mới nhảy, thức trắng đêm làm trong hoảng loạn', score: 4 }
+        ]
+      },
+      {
+        id: 8,
+        question: 'Khi được thầy cô gọi lên bảng kiểm tra bài cũ hoặc giải bài đột xuất, bạn:',
+        options: [
+          { label: 'Bình tĩnh, chuẩn bị bài tốt nên tự tin trả lời', score: 1 },
+          { label: 'Hơi giật mình một chút nhưng lấy lại bình tĩnh nhanh', score: 2 },
+          { label: 'Run rẩy, tim đập thình thịch dù có học bài nhưng dễ quên sạch', score: 3 },
+          { label: 'Choáng váng, sợ hãi tột độ vì sợ bị chê cười trước cả lớp', score: 4 }
+        ]
+      },
+      {
+        id: 9,
+        question: 'Bạn có thường so sánh điểm số của mình với bạn bè hoặc "con nhà người ta" không?',
+        options: [
+          { label: 'Không, mình chỉ tập trung vào sự tiến bộ của chính mình', score: 1 },
+          { label: 'Thỉnh thoảng xem để biết mức độ học lực chung', score: 2 },
+          { label: 'Thường xuyên so sánh và luôn cảm thấy mình thua thiệt, kém cỏi', score: 3 },
+          { label: 'Ám ảnh ghen tỵ và tự dằn vặt mỗi khi điểm số thấp hơn người khác', score: 4 }
+        ]
+      },
+      {
+        id: 10,
+        question: 'Bạn nghĩ gì về việc xin sự trợ giúp hoặc nói thật với bố mẹ/thầy cô khi việc học quá tải?',
+        options: [
+          { label: 'Sẵn sàng trao đổi thẳng thắn để cùng tìm giải pháp giảm tải', score: 1 },
+          { label: 'Cần chút thời gian suy nghĩ nhưng sẽ mở lời khi cần', score: 2 },
+          { label: 'Rất e ngại vì sợ bị đánh giá là lười biếng hoặc thiếu ý chí', score: 3 },
+          { label: 'Tuyệt đối không dám nói, thà chịu đựng một mình đến kiệt sức', score: 4 }
+        ]
       }
     ],
     results: {
@@ -771,6 +821,56 @@ export const QUIZZES: Quiz[] = [
           { label: 'Thường xuyên thức khuya đến 1-2h sáng vì lướt video ngắn', score: 3 },
           { label: 'Ngày nào cũng thức thâu đêm vì nghiện màn hình', score: 4 }
         ]
+      },
+      {
+        id: 6,
+        question: 'Khi thấy bài đăng của bạn bè khoe thành tích, giải thưởng hoặc cuộc sống hoàn hảo, bạn thường:',
+        options: [
+          { label: 'Thả tim chúc mừng thật lòng cho bạn', score: 1 },
+          { label: 'Lướt qua bình thường, coi như thông tin tham khảo', score: 2 },
+          { label: 'Cảm thấy chạnh lòng, tự ti về hoàn cảnh hoặc năng lực bản thân', score: 3 },
+          { label: 'Bị ám ảnh suy nghĩ tiêu cực cả ngày, ghét bỏ cuộc sống hiện tại của mình', score: 4 }
+        ]
+      },
+      {
+        id: 7,
+        question: 'Bạn có bao giờ cảm thấy phải chỉnh sửa ảnh (dùng filter bóp mặt, kéo chân) thật kỹ mới dám đăng lên mạng?',
+        options: [
+          { label: 'Để mặt mộc tự nhiên hoặc chụp sao đăng vậy', score: 1 },
+          { label: 'Chỉnh màu nhẹ nhàng cho sáng sủa', score: 2 },
+          { label: 'Mất hàng tiếng đồng hồ chọn góc và sửa từng chi tiết mới dám đăng', score: 3 },
+          { label: 'Cực kỳ sợ người khác thấy nhan sắc thật ngoài đời của mình', score: 4 }
+        ]
+      },
+      {
+        id: 8,
+        question: 'Bạn có thói quen vừa học bài vừa để điện thoại bên cạnh mở mạng xã hội không?',
+        options: [
+          { label: 'Mình cất điện thoại ở phòng khác hoặc bật chế độ tập trung', score: 1 },
+          { label: 'Để gần nhưng chỉ mở khi có thông báo quan trọng', score: 2 },
+          { label: 'Cứ 5-10 phút lại mở máy lướt một lần vô thức', score: 3 },
+          { label: 'Hoàn toàn không thể học nổi vì tay luôn dính chặt vào màn hình', score: 4 }
+        ]
+      },
+      {
+        id: 9,
+        question: 'Khi đọc phải những bình luận ác ý hoặc tranh cãi tiêu cực trên mạng, bạn:',
+        options: [
+          { label: 'Bỏ qua ngay hoặc block tài khoản độc hại', score: 1 },
+          { label: 'Hơi bực mình một chút nhưng không tham gia tranh cãi', score: 2 },
+          { label: 'Trằn trọc suy nghĩ và bận tâm suốt cả buổi', score: 3 },
+          { label: 'Bị tổn thương sâu sắc, thức đêm đôi co hoặc suy sụp tinh thần', score: 4 }
+        ]
+      },
+      {
+        id: 10,
+        question: 'Nếu phải rời xa điện thoại và mạng xã hội trong vòng 2 ngày cuối tuần, bạn sẽ:',
+        options: [
+          { label: 'Thấy rất tuyệt vời vì có dịp nghỉ ngơi và hòa mình vào đời thực', score: 1 },
+          { label: 'Hơi bỡ ngỡ lúc đầu nhưng sẽ tìm được việc vui khác để làm', score: 2 },
+          { label: 'Cảm thấy bứt rứt, trống rỗng và liên tục tìm cách lén dùng', score: 3 },
+          { label: 'Cực kỳ hoảng loạn, cảm thấy thế giới như sụp đổ nếu không có mạng', score: 4 }
+        ]
       }
     ],
     results: {
@@ -874,6 +974,56 @@ export const QUIZZES: Quiz[] = [
           { label: 'Bố mẹ chỉ nhìn thấy những gì họ muốn thấy', score: 3 },
           { label: 'Bố mẹ hoàn toàn không hiểu gì về mình, như hai người xa lạ', score: 4 }
         ]
+      },
+      {
+        id: 6,
+        question: 'Bố mẹ có bao giờ so sánh bạn với anh chị em trong nhà hoặc "con nhà người ta" không?',
+        options: [
+          { label: 'Hầu như không, bố mẹ tôn trọng sự khác biệt của mỗi người', score: 1 },
+          { label: 'Thỉnh thoảng nhắc nhở với mục đích động viên nhẹ', score: 2 },
+          { label: 'Khá thường xuyên, khiến bạn thấy mình luôn là cái bóng kém cỏi', score: 3 },
+          { label: 'Bị so sánh liên tục mỗi ngày, biến thành đòn roi tinh thần gây tổn thương sâu sắc', score: 4 }
+        ]
+      },
+      {
+        id: 7,
+        question: 'Khi bạn bày tỏ ước mơ hoặc sở thích cá nhân (nghệ thuật, thể thao, ngành học), phản ứng của bố mẹ là:',
+        options: [
+          { label: 'Lắng nghe, tôn trọng và tạo điều kiện hết lòng', score: 1 },
+          { label: 'Lắng nghe nhưng vẫn khuyên nên chọn con đường an toàn hơn', score: 2 },
+          { label: 'Gạt phắt đi, cho rằng đó là viển vông, vô bổ và bắt phải theo ý bố mẹ', score: 3 },
+          { label: 'Chế giễu, cấm đoán gay gắt và xem thường đam mê của bạn', score: 4 }
+        ]
+      },
+      {
+        id: 8,
+        question: 'Bạn có cảm giác an toàn và được nâng đỡ khi ở trong chính ngôi nhà của mình không?',
+        options: [
+          { label: 'Ngôi nhà là bến đỗ bình yên nhất sau những giờ học căng thẳng', score: 1 },
+          { label: 'Phần lớn thời gian cảm thấy an tâm', score: 2 },
+          { label: 'Đôi khi thấy ngột ngạt và muốn tìm cớ ra ngoài', score: 3 },
+          { label: 'Cảm giác như một nơi giam cầm cảm xúc, lúc nào cũng phải đề phòng', score: 4 }
+        ]
+      },
+      {
+        id: 9,
+        question: 'Lần gần nhất bạn và bố mẹ có một cuộc trò chuyện chân thành, không cãi vã là khi nào?',
+        options: [
+          { label: 'Trong vài ngày gần đây', score: 1 },
+          { label: 'Khoảng 1 - 2 tuần trước', score: 2 },
+          { label: 'Đã vài tháng rồi không thể nói chuyện quá 3 câu mà không cãi nhau', score: 3 },
+          { label: 'Không nhớ nổi, dường như chưa bao giờ có một cuộc nói chuyện tử tế', score: 4 }
+        ]
+      },
+      {
+        id: 10,
+        question: 'Bạn có dám khóc hoặc bộc lộ sự yếu đuối trước mặt bố mẹ khi gặp khủng hoảng không?',
+        options: [
+          { label: 'Hoàn toàn dám, vì bố mẹ sẽ ôm lấy và an ủi bạn', score: 1 },
+          { label: 'Đôi khi dám, nhưng thường chỉ với mẹ hoặc bố', score: 2 },
+          { label: 'Không dám, sợ bị mắng là "kém cỏi", "có thế mà cũng khóc"', score: 3 },
+          { label: 'Luôn phải gồng mình giả vờ mạnh mẽ, chỉ dám khóc thầm trong bóng tối', score: 4 }
+        ]
       }
     ],
     results: {
@@ -974,6 +1124,56 @@ export const QUIZZES: Quiz[] = [
           { label: 'Hơi tiếc nuối một chút', score: 2 },
           { label: 'Cả ngày hôm đó bồn chồn, liên tục nhắn tin hỏi bạn bè', score: 3 },
           { label: 'Khóc hoặc buồn bã cả tuần vì cảm giác bị bỏ rơi', score: 4 }
+        ]
+      },
+      {
+        id: 6,
+        question: 'Khi thấy một nhóm bạn tụ tập hoặc lập nhóm chat riêng mà không có tên bạn, bạn cảm thấy:',
+        options: [
+          { label: 'Bình thường, ai cũng có những nhóm bạn bè và sở thích riêng', score: 1 },
+          { label: 'Hơi tò mò một chút nhưng không quá bận tâm', score: 2 },
+          { label: 'Cảm thấy tủi thân, lo lắng rằng mọi người đang bàn tán hoặc xa lánh mình', score: 3 },
+          { label: 'Suy sụp, suy diễn đủ điều tiêu cực và cảm thấy mình bị cả lớp cô lập', score: 4 }
+        ]
+      },
+      {
+        id: 7,
+        question: 'Bạn có bao giờ nói dối về sở thích, gu âm nhạc hoặc hoàn cảnh gia đình chỉ để "hòa nhập" với nhóm bạn không?',
+        options: [
+          { label: 'Không bao giờ, mình tự hào về con người thật của mình', score: 1 },
+          { label: 'Thỉnh thoảng hùa theo một vài câu chuyện cười cho vui', score: 2 },
+          { label: 'Thường xuyên giả vờ thích những thứ mình ghét để không bị coi là dị biệt', score: 3 },
+          { label: 'Hoàn toàn đánh mất chính mình, nói dối nhiều đến mức bản thân cũng thấy sợ', score: 4 }
+        ]
+      },
+      {
+        id: 8,
+        question: 'Mức độ bạn kiểm tra tin nhắn và thông báo trong các hội nhóm lớp/bạn bè:',
+        options: [
+          { label: 'Rảnh thì đọc, không để thông báo làm phiền giờ học hay giờ ngủ', score: 1 },
+          { label: 'Kiểm tra sau mỗi buổi học hoặc giờ giải lao', score: 2 },
+          { label: 'Cứ có tiếng chuông là giật mình bấm xem ngay lập tức', score: 3 },
+          { label: 'Luôn trong trạng thái căng thẳng thường trực, sợ bỏ lỡ bất kỳ drama nào', score: 4 }
+        ]
+      },
+      {
+        id: 9,
+        question: 'Bạn có dám từ chối một lời rủ rê trốn học, hút thuốc, chơi game hoặc làm điều trái nguyên tắc từ nhóm bạn không?',
+        options: [
+          { label: 'Dứt khoát từ chối ngay và giữ vững nguyên tắc của mình', score: 1 },
+          { label: 'Tìm lý do chính đáng để khéo léo từ chối', score: 2 },
+          { label: 'Ngập ngừng, sợ bị bạn bè chê là "hèn" nên rất khó nói không', score: 3 },
+          { label: 'Nhắm mắt làm theo dù biết sai chỉ vì sợ bị tẩy chay hoặc đuổi khỏi nhóm', score: 4 }
+        ]
+      },
+      {
+        id: 10,
+        question: 'Sau một ngày dài cố gắng hòa nhập và làm hài lòng bạn bè ở trường, khi về đến nhà bạn thấy thế nào?',
+        options: [
+          { label: 'Vui vẻ, tràn đầy năng lượng tích cực', score: 1 },
+          { label: 'Hơi mệt một chút như bình thường', score: 2 },
+          { label: 'Cảm thấy trống rỗng, kiệt sức vì cả ngày phải đóng vai người khác', score: 3 },
+          { label: 'Vô cùng đau khổ, cảm giác cô độc giữa biển người dù xung quanh rất đông đúc', score: 4 }
         ]
       }
     ],
@@ -1076,6 +1276,56 @@ export const QUIZZES: Quiz[] = [
           { label: 'Mình luôn phải là người lắng nghe than thở mà ít được chia sẻ', score: 3 },
           { label: 'Họ chỉ tìm đến mình khi cần nhờ vả việc học/tiền bạc', score: 4 }
         ]
+      },
+      {
+        id: 6,
+        question: 'Khi bạn đạt được thành tích cao hoặc nhận được lời khen từ thầy cô, phản ứng của bạn bè là:',
+        options: [
+          { label: 'Chân thành chúc mừng và chia vui cùng bạn', score: 1 },
+          { label: 'Vui vẻ bình thường, trêu đùa một chút', score: 2 },
+          { label: 'Lạnh nhạt, buông những câu bóng gió mỉa mai ("May mắn thôi")', score: 3 },
+          { label: 'Tỏ thái độ ghen ghét ra mặt, nói xấu và cô lập bạn', score: 4 }
+        ]
+      },
+      {
+        id: 7,
+        question: 'Bạn có cảm thấy mình phải "bao tiền ăn uống" hoặc cho bạn bè chép bài để duy trì tình bạn không?',
+        options: [
+          { label: 'Không, tình bạn dựa trên sự bình đẳng và tôn trọng lẫn nhau', score: 1 },
+          { label: 'Thỉnh thoảng mời nhau đồ ăn vặt cho vui vẻ', score: 2 },
+          { label: 'Khá thường xuyên, nếu không cho chép bài là bị bạn giận dỗi', score: 3 },
+          { label: 'Luôn luôn bị lợi dụng, nếu không đáp ứng sẽ bị dọa tẩy chay ngay', score: 4 }
+        ]
+      },
+      {
+        id: 8,
+        question: 'Khi xảy ra mâu thuẫn hay hiểu lầm trong nhóm bạn, cách giải quyết thường là:',
+        options: [
+          { label: 'Thẳng thắn nhắn tin hoặc gặp mặt trực tiếp để giải tỏa khúc mắc', score: 1 },
+          { label: 'Để vài hôm cho nguôi giận rồi nói chuyện lại', score: 2 },
+          { label: 'Lập nhóm nói xấu sau lưng và chiến tranh lạnh kéo dài', score: 3 },
+          { label: 'Đăng status bóng gió lên mạng xã hội, bóc phốt và công kích cá nhân', score: 4 }
+        ]
+      },
+      {
+        id: 9,
+        question: 'Bạn có một người bạn thân thực sự để có thể tâm sự những góc khuất thầm kín nhất không?',
+        options: [
+          { label: 'Có ít nhất 1-2 người bạn tri kỷ như vậy', score: 1 },
+          { label: 'Có bạn bè chơi cùng nhưng chưa thật sự sâu sắc', score: 2 },
+          { label: 'Rất khó tìm được ai tin tưởng được hoàn toàn', score: 3 },
+          { label: 'Hoàn toàn cô độc, không có bất kỳ ai để chia sẻ nỗi lòng', score: 4 }
+        ]
+      },
+      {
+        id: 10,
+        question: 'Bạn có dám nói ra ý kiến trái ngược với số đông trong nhóm bạn của mình không?',
+        options: [
+          { label: 'Dám bộc lộ quan điểm một cách văn minh và tôn trọng', score: 1 },
+          { label: 'Tùy tình huống, nếu không quá quan trọng thì xuôi theo', score: 2 },
+          { label: 'Ngại nói vì sợ bị bạn bè phản bác hoặc cười nhạo', score: 3 },
+          { label: 'Tuyệt đối không dám, luôn phải gật đầu đồng ý dù trong lòng phản đối', score: 4 }
+        ]
       }
     ],
     results: {
@@ -1176,6 +1426,56 @@ export const QUIZZES: Quiz[] = [
           { label: 'Thỉnh thoảng mỏi mắt sau khi học bài', score: 2 },
           { label: 'Đau đầu, mỏi cổ vai gáy thường xuyên', score: 3 },
           { label: 'Kiệt quệ triền miên, hay hoa mắt chóng mặt', score: 4 }
+        ]
+      },
+      {
+        id: 6,
+        question: 'Bạn có dành thời gian vận động thể chất (thể thao, đi bộ, đạp xe) trong tuần không?',
+        options: [
+          { label: 'Đều đặn ít nhất 30 phút mỗi ngày', score: 1 },
+          { label: 'Khoảng 2 - 3 lần mỗi tuần', score: 2 },
+          { label: 'Rất hiếm khi, hầu như cả ngày chỉ ngồi học và nằm lướt máy', score: 3 },
+          { label: 'Hoàn toàn không bao giờ vận động, cơ thể luôn nặng nề uể oải', score: 4 }
+        ]
+      },
+      {
+        id: 7,
+        question: 'Thói quen uống nước và nạp năng lượng trong ngày của bạn ra sao?',
+        options: [
+          { label: 'Uống đủ 1.5 - 2 lít nước lọc và ăn uống điều độ', score: 1 },
+          { label: 'Uống nước khi khát, ăn uống tương đối đủ bữa', score: 2 },
+          { label: 'Hay quên uống nước, hay dùng trà sữa/nước ngọt thay nước lọc', score: 3 },
+          { label: 'Lạm dụng cà phê hoặc nước tăng lực liều cao để ép cơ thể thức học đêm', score: 4 }
+        ]
+      },
+      {
+        id: 8,
+        question: 'Bạn có những khoảnh khắc tĩnh lặng cho riêng mình (viết nhật ký, nghe nhạc thiền, ngắm cây cối) không?',
+        options: [
+          { label: 'Ngày nào cũng có một khoảng lặng bình yên cho tâm trí', score: 1 },
+          { label: 'Vài lần trong tuần khi rảnh rỗi', score: 2 },
+          { label: 'Hiếm khi, tâm trí lúc nào cũng chạy đua với bài vở hoặc mạng xã hội', score: 3 },
+          { label: 'Không bao giờ, cảm giác yên tĩnh khiến bạn thấy bất an và hoảng sợ', score: 4 }
+        ]
+      },
+      {
+        id: 9,
+        question: 'Khi cơ thể bạn lên tiếng báo động (cảm cúm, đau bụng, mệt lả), bạn thường:',
+        options: [
+          { label: 'Xin phép nghỉ ngơi, uống thuốc và chăm sóc cơ thể chu đáo', score: 1 },
+          { label: 'Nghỉ ngơi một lúc rồi học tiếp', score: 2 },
+          { label: 'Uống thuốc giảm đau tức thời để tiếp tục ngồi vào bàn học', score: 3 },
+          { label: 'Phớt lờ hoàn toàn, cố gượng ép bản thân học thêm vì sợ tụt lại', score: 4 }
+        ]
+      },
+      {
+        id: 10,
+        question: 'Bạn đánh giá mức độ hài lòng và niềm hạnh phúc với cuộc sống hiện tại của mình ở mức nào?',
+        options: [
+          { label: 'Rất hài lòng, cảm thấy cuộc sống cân bằng và ý nghĩa', score: 1 },
+          { label: 'Khá ổn, có những niềm vui nhỏ mỗi ngày', score: 2 },
+          { label: 'Thường xuyên thấy mệt mỏi, áp lực lấn át niềm vui', score: 3 },
+          { label: 'Cực kỳ bế tắc, cảm thấy kiệt sức và mất phương hướng sống', score: 4 }
         ]
       }
     ],

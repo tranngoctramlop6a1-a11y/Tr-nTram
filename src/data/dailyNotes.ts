@@ -174,8 +174,17 @@ export const DAILY_NOTES_POOL: DailyNoteItem[] = [
  * 2026-09-16 -> Note Y (guaranteed DIFFERENT!)
  * 2026-09-17 -> Note Z
  */
-export function getDailyNoteForDate(dateStr?: string): DailyNoteItem {
-  const targetDate = dateStr || new Date().toISOString().split('T')[0];
+export function getDailyNoteForDate(dateInput?: string | Date): DailyNoteItem {
+  let targetDate: string;
+  if (!dateInput) {
+    targetDate = new Date().toISOString().split('T')[0];
+  } else if (typeof dateInput === 'string') {
+    targetDate = dateInput;
+  } else if (dateInput instanceof Date) {
+    targetDate = dateInput.toISOString().split('T')[0];
+  } else {
+    targetDate = new Date().toISOString().split('T')[0];
+  }
   
   // Calculate a stable hash based on date string
   let hash = 0;

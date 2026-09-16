@@ -33,6 +33,7 @@ import { EmotionBar } from './EmotionBar';
 import { FertilizerSection } from './FertilizerSection';
 import { RewardGiftModal } from './RewardGiftModal';
 import { GardenDecorationsModal } from './GardenDecorationsModal';
+import { RemoveSeedModal } from './RemoveSeedModal';
 import {
   PLANT_EMOTIONS,
   WEATHER_CONFIG,
@@ -43,7 +44,7 @@ import {
   getDailyPlantGreeting,
   calculatePlantStage,
   getStageDetails,
-  pickRandomReward
+  pickSmartReward
 } from './plantUtils';
 
 const getPlantStorageKey = (userId?: string) =>
@@ -76,7 +77,9 @@ export const EmotionPlantView: React.FC = () => {
   }));
   const [dailyLogs, setDailyLogs] = useState<Record<string, DailyPlantLog>>({});
   const [unlockedDecorations, setUnlockedDecorations] = useState<GardenDecorationItem[]>([]);
+  const [activeDecorations, setActiveDecorations] = useState<string[]>([]);
   const [rewards, setRewards] = useState<PlantRewardItem[]>([]);
+  const [rewardHistory, setRewardHistory] = useState<string[]>([]);
   const [hasPendingGift, setHasPendingGift] = useState<boolean>(false);
   const [lastVisitedDate, setLastVisitedDate] = useState<string>(todayStr);
 
@@ -92,6 +95,19 @@ export const EmotionPlantView: React.FC = () => {
   const [isSowingAnim, setIsSowingAnim] = useState<boolean>(false);
   const [isBoxOpen, setIsBoxOpen] = useState<boolean>(false);
   const [recentEffect, setRecentEffect] = useState<SeedGrowthEffect | null>(null);
+  const [isRemoveSeedModalOpen, setIsRemoveSeedModalOpen] = useState<boolean>(false);
+
+  // Check if today has a sown paper seed
+  const hasTodayPaperSeed = useMemo(() => {
+    return seeds.some((s) => {
+      try {
+        const d = new Date(s.createdAt).toISOString().split('T')[0];
+        return d === todayStr;
+      } catch {
+        return false;
+      }
+    });
+  }, [seeds, todayStr]);
 
   // Load state helper
   const loadState = useCallback(() => {
@@ -118,7 +134,13 @@ export const EmotionPlantView: React.FC = () => {
           }
           if (parsed.dailyLogs) setDailyLogs(parsed.dailyLogs);
           if (Array.isArray(parsed.unlockedDecorations)) setUnlockedDecorations(parsed.unlockedDecorations);
+          if (Array.isArray(parsed.activeDecorations)) {
+            setActiveDecorations(parsed.activeDecorations);
+          } else if (Array.isArray(parsed.unlockedDecorations)) {
+            setActiveDecorations(parsed.unlockedDecorations.map((d) => d.id));
+          }
           if (Array.isArray(parsed.rewards)) setRewards(parsed.rewards);
+          if (Array.isArray(parsed.rewardHistory)) setRewardHistory(parsed.rewardHistory);
           if (typeof parsed.pendingGift === 'boolean') setHasPendingGift(parsed.pendingGift);
           if (parsed.lastVisitedDate) setLastVisitedDate(parsed.lastVisitedDate);
 
@@ -181,7 +203,13 @@ export const EmotionPlantView: React.FC = () => {
             }
             if (p.dailyLogs) setDailyLogs(p.dailyLogs);
             if (Array.isArray(p.unlockedDecorations)) setUnlockedDecorations(p.unlockedDecorations);
+            if (Array.isArray(p.activeDecorations)) {
+              setActiveDecorations(p.activeDecorations);
+            } else if (Array.isArray(p.unlockedDecorations)) {
+              setActiveDecorations(p.unlockedDecorations.map((d: any) => d.id));
+            }
             if (Array.isArray(p.rewards)) setRewards(p.rewards);
+            if (Array.isArray(p.rewardHistory)) setRewardHistory(p.rewardHistory);
             if (typeof p.pendingGift === 'boolean') setHasPendingGift(p.pendingGift);
           } else if (Array.isArray(data.seeds) && data.seeds.length > 0) {
             setSeeds(data.seeds);
@@ -208,7 +236,9 @@ export const EmotionPlantView: React.FC = () => {
         todayFertilizer,
         dailyLogs,
         unlockedDecorations,
+        activeDecorations,
         rewards,
+        rewardHistory,
         pendingGift: hasPendingGift,
         lastVisitedDate: todayStr,
         ...override
@@ -246,7 +276,9 @@ export const EmotionPlantView: React.FC = () => {
       todayFertilizer,
       dailyLogs,
       unlockedDecorations,
+      activeDecorations,
       rewards,
+      rewardHistory,
       hasPendingGift,
       todayStr,
       token,
@@ -426,33 +458,144 @@ export const EmotionPlantView: React.FC = () => {
   // Open Surprise Gift
   const handleOpenGift = () => {
     const unlockedIds = unlockedDecorations.map((d) => d.id);
-    const reward = pickRandomReward(unlockedIds);
+    const reward = pickSmartReward(unlockedIds, rewardHistory);
     setActiveGift(reward);
     setIsGiftModalOpen(true);
     setHasPendingGift(false);
 
+    const updatedHistory = [reward.id, ...rewardHistory.slice(0, 10)];
+    setRewardHistory(updatedHistory);
+
+    // If it's advice or quote, save to rewards history immediately
     const updatedRewards = [reward, ...rewards];
     setRewards(updatedRewards);
 
-    let updatedDecorations = unlockedDecorations;
-    if (reward.decoration) {
-      // Add to decorations
-      updatedDecorations = [reward.decoration, ...unlockedDecorations];
-      setUnlockedDecorations(updatedDecorations);
-    }
-
     persistFullState({
       pendingGift: false,
-      rewards: updatedRewards,
-      unlockedDecorations: updatedDecorations
+      rewardHistory: updatedHistory,
+      rewards: updatedRewards
     });
   };
 
-  // Delete seed
+  // User applies physical reward item to garden
+  const handleApplyGift = (reward: PlantRewardItem) => {
+    if (reward.decoration) {
+      const dec = reward.decoration;
+      const exists = unlockedDecorations.some((d) => d.id === dec.id);
+      const nextUnlocked = exists ? unlockedDecorations : [dec, ...unlockedDecorations];
+      const nextActive = activeDecorations.includes(dec.id)
+        ? activeDecorations
+        : [...activeDecorations, dec.id];
+
+      setUnlockedDecorations(nextUnlocked);
+      setActiveDecorations(nextActive);
+      setPlantSpeech(`Woa, ${dec.name} đã ghé thăm và ở lại góc vườn cùng chúng mình rồi nè! ✨`);
+
+      persistFullState({
+        unlockedDecorations: nextUnlocked,
+        activeDecorations: nextActive
+      });
+    }
+    setIsGiftModalOpen(false);
+    setActiveGift(null);
+  };
+
+  // User stores physical reward item in inventory without applying to tree
+  const handleDeclineGift = (reward: PlantRewardItem) => {
+    if (reward.decoration) {
+      const dec = reward.decoration;
+      const exists = unlockedDecorations.some((d) => d.id === dec.id);
+      const nextUnlocked = exists ? unlockedDecorations : [dec, ...unlockedDecorations];
+      const nextActive = activeDecorations.filter((id) => id !== dec.id);
+
+      setUnlockedDecorations(nextUnlocked);
+      setActiveDecorations(nextActive);
+      setPlantSpeech(`Tớ đã cất ${dec.name} vào kho Góc vườn cho cậu rồi nha 🌱`);
+
+      persistFullState({
+        unlockedDecorations: nextUnlocked,
+        activeDecorations: nextActive
+      });
+    }
+    setIsGiftModalOpen(false);
+    setActiveGift(null);
+  };
+
+  // Toggle decoration active state from Garden Modal
+  const handleToggleDecoration = (id: string) => {
+    setActiveDecorations((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      persistFullState({ activeDecorations: next });
+      return next;
+    });
+  };
+
+  // Delete seed from history
   const handleDeleteSeed = (seedId: string) => {
     const updated = seeds.filter((s) => s.id !== seedId);
     setSeeds(updated);
     persistFullState({ seeds: updated });
+  };
+
+  // Remove active emotion seed from pot (returning pot to empty state)
+  const handleRemoveEmotionSeed = (deleteTodayPaperSeed: boolean = false) => {
+    setTodayEmotion(undefined);
+    const baseWeather = getBaseWeatherForDate(todayStr);
+    setCurrentWeather(baseWeather);
+
+    const currentTodayLog = dailyLogs[todayStr];
+    const updatedLogs: Record<string, DailyPlantLog> = {
+      ...dailyLogs,
+      [todayStr]: {
+        ...currentTodayLog,
+        date: todayStr,
+        weather: baseWeather,
+        emotion: undefined,
+        sowedSeed: deleteTodayPaperSeed ? false : (currentTodayLog?.sowedSeed || false)
+      }
+    };
+    setDailyLogs(updatedLogs);
+
+    let updatedSeeds = seeds;
+    if (deleteTodayPaperSeed) {
+      const todaySeeds = seeds.filter((s) => {
+        try {
+          const d = new Date(s.createdAt).toISOString().split('T')[0];
+          return d === todayStr;
+        } catch {
+          return false;
+        }
+      });
+      if (todaySeeds.length > 0) {
+        const lastTodaySeedId = todaySeeds[todaySeeds.length - 1].id;
+        updatedSeeds = seeds.filter((s) => s.id !== lastTodaySeedId);
+        setSeeds(updatedSeeds);
+      }
+    }
+
+    setPlantSpeech('Tớ đã dọn sạch chậu rồi nhé 🌱 Đất mềm sẵn sàng đón nhận hạt mầm cảm xúc mới của cậu.');
+
+    persistFullState({
+      todayEmotion: undefined,
+      currentWeather: baseWeather,
+      dailyLogs: updatedLogs,
+      seeds: updatedSeeds
+    });
+
+    setIsRemoveSeedModalOpen(false);
+  };
+
+  // Remove a single floating gift/decoration when user clicks 'x' on the emoji
+  const handleRemoveDecoration = (id: string) => {
+    const removedItem = unlockedDecorations.find((d) => d.id === id);
+    setActiveDecorations((prev) => {
+      const next = prev.filter((itemId) => itemId !== id);
+      persistFullState({ activeDecorations: next });
+      return next;
+    });
+    if (removedItem) {
+      setPlantSpeech(`Tớ đã cất ${removedItem.name} vào Góc vườn cho không gian thoáng đãng rồi nhé! 🌱`);
+    }
   };
 
   // Current stage calculation
@@ -535,10 +678,13 @@ export const EmotionPlantView: React.FC = () => {
       {/* ════════════════ MAIN INTERACTIVE PLAYGROUND ════════════════ */}
       <main className="max-w-5xl mx-auto px-4 sm:px-6 space-y-6">
         {/* Emotion Selector Bar */}
-        <EmotionBar
-          selectedEmotion={todayEmotion}
-          onSelectEmotion={handleSelectEmotion}
-        />
+        <div id="emotion-bar-section">
+          <EmotionBar
+            selectedEmotion={todayEmotion}
+            onSelectEmotion={handleSelectEmotion}
+            onRemoveEmotion={() => setIsRemoveSeedModalOpen(true)}
+          />
+        </div>
 
         {/* Primary Play Screen: Split into Garden / Plant Stage and Daily Fertilizer */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -587,6 +733,8 @@ export const EmotionPlantView: React.FC = () => {
                 stage={currentStage}
                 weather={currentWeather}
                 decorations={unlockedDecorations}
+                activeDecorations={activeDecorations}
+                todayEmotion={todayEmotion}
                 hasPendingGift={hasPendingGift}
                 isSowingAnim={isSowingAnim}
                 recentlyAddedEffect={recentEffect}
@@ -602,6 +750,12 @@ export const EmotionPlantView: React.FC = () => {
                   setTimeout(() => setIsSowingAnim(false), 800);
                 }}
                 onOpenGift={handleOpenGift}
+                onOpenRemoveEmotionModal={() => setIsRemoveSeedModalOpen(true)}
+                onOpenEmotionPicker={() => {
+                  const el = document.getElementById('emotion-bar-section');
+                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }}
+                onRemoveDecoration={handleRemoveDecoration}
               />
 
               {/* Seed box below */}
@@ -785,17 +939,29 @@ export const EmotionPlantView: React.FC = () => {
       <GardenDecorationsModal
         isOpen={isDecorationsOpen}
         unlockedDecorations={unlockedDecorations}
+        activeDecorations={activeDecorations}
         rewards={rewards}
+        onToggleDecoration={handleToggleDecoration}
         onClose={() => setIsDecorationsOpen(false)}
       />
 
       <RewardGiftModal
         isOpen={isGiftModalOpen}
         reward={activeGift}
+        onApplyGift={handleApplyGift}
+        onDeclineGift={handleDeclineGift}
         onClose={() => {
           setIsGiftModalOpen(false);
           setActiveGift(null);
         }}
+      />
+
+      <RemoveSeedModal
+        isOpen={isRemoveSeedModalOpen}
+        onClose={() => setIsRemoveSeedModalOpen(false)}
+        onConfirmRemove={handleRemoveEmotionSeed}
+        todayEmotion={todayEmotion}
+        hasTodayPaperSeed={hasTodayPaperSeed}
       />
     </div>
   );

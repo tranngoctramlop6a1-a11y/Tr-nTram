@@ -246,10 +246,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-serif font-bold text-lg sm:text-xl text-[#2A1F18] tracking-tight whitespace-nowrap">
-                      Bạn ơi, mình nói nè
-                    </span>
-                    <span className="hidden sm:inline-block text-[10px] font-serif font-bold uppercase px-2 py-0.5 rounded-full bg-[#EDE4D8] text-[#6B4E3D] border border-[#DFCFC0]">
-                      Safe Space
+                      Teen ơi!
                     </span>
                   </div>
                   <p className="text-[11px] text-[#7A6455] font-serif hidden xl:block">

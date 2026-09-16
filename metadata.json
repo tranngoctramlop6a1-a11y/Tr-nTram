@@ -1,5 +1,5 @@
 {
-  "name": "Bạn ơi, mình nói nè",
+  "name": "Teen ơi!",
   "description": "Không gian trò chuyện thân thiện, an toàn và không phán xét dành cho học sinh tuổi teen với thông điệp: Có chuyện gì, cứ kể mình nghe.",
   "requestFramePermissions": ["microphone"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

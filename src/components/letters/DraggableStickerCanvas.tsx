@@ -61,8 +61,8 @@ export const DraggableStickerCanvas: React.FC<DraggableStickerCanvasProps> = ({
   const handlePointerMove = useCallback((e: MouseEvent | TouchEvent) => {
     if (!dragStartRef.current) return;
 
-    // Prevent default scroll when dragging on mobile
-    if ('touches' in e && e.cancelable) {
+    // Prevent default scroll when dragging
+    if (e.cancelable) {
       e.preventDefault();
     }
 
@@ -79,9 +79,9 @@ export const DraggableStickerCanvas: React.FC<DraggableStickerCanvasProps> = ({
     const deltaXPercent = (deltaXPixels / rectWidth) * 100;
     const deltaYPercent = (deltaYPixels / rectHeight) * 100;
 
-    // Clamp coordinates so sticker stays comfortably inside the letter sheet (4% - 96%)
-    const newX = Math.max(4, Math.min(96, initialStickerX + deltaXPercent));
-    const newY = Math.max(4, Math.min(96, initialStickerY + deltaYPercent));
+    // Clamp coordinates so sticker stays comfortably inside the letter sheet (2% - 98%)
+    const newX = Math.max(2, Math.min(98, initialStickerX + deltaXPercent));
+    const newY = Math.max(2, Math.min(98, initialStickerY + deltaYPercent));
 
     const currentList = stickersRef.current;
     const updated = currentList.map(stk =>
@@ -125,6 +125,9 @@ export const DraggableStickerCanvas: React.FC<DraggableStickerCanvasProps> = ({
   ) => {
     if (isReadOnly) return;
     e.stopPropagation();
+    if ('preventDefault' in e && typeof e.preventDefault === 'function') {
+      e.preventDefault();
+    }
 
     setSelectedId(stk.id);
     setDraggingId(stk.id);
@@ -189,42 +192,42 @@ export const DraggableStickerCanvas: React.FC<DraggableStickerCanvasProps> = ({
     if (def) {
       if (def.type === 'washi') {
         return (
-          <div className="w-24 h-6 sm:w-28 sm:h-7 flex items-center justify-center">
-            {def.renderIcon({ className: 'w-full h-full object-contain' })}
+          <div className="w-20 h-5 sm:w-22 sm:h-5.5 flex items-center justify-center select-none pointer-events-none">
+            {def.renderIcon({ className: 'w-full h-full object-contain pointer-events-none' })}
           </div>
         );
       }
       if (def.type === 'postage') {
         return (
-          <div className="w-12 h-15 sm:w-14 sm:h-18 flex items-center justify-center">
-            {def.renderIcon({ className: 'w-full h-full object-contain' })}
+          <div className="w-9 h-11 sm:w-10 sm:h-12 flex items-center justify-center select-none pointer-events-none">
+            {def.renderIcon({ className: 'w-full h-full object-contain pointer-events-none' })}
           </div>
         );
       }
       if (def.type === 'cute') {
         return (
-          <div className="w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center">
-            {def.renderIcon({ className: 'w-full h-full object-contain' })}
+          <div className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center select-none pointer-events-none">
+            {def.renderIcon({ className: 'w-full h-full object-contain pointer-events-none' })}
           </div>
         );
       }
       return (
-        <div className="w-12 h-12 flex items-center justify-center">
-          {def.renderIcon({ className: 'w-full h-full object-contain' })}
+        <div className="w-8 h-8 flex items-center justify-center select-none pointer-events-none">
+          {def.renderIcon({ className: 'w-full h-full object-contain pointer-events-none' })}
         </div>
       );
     }
 
     if (stk.char) {
       return (
-        <span className="text-2xl sm:text-3xl leading-none select-none block drop-shadow-xs">
+        <span className="text-xl sm:text-2xl leading-none select-none block drop-shadow-xs pointer-events-none">
           {stk.char}
         </span>
       );
     }
 
     return (
-      <span className="text-xs font-serif px-2 py-0.5 bg-amber-50 rounded border border-amber-200 text-amber-900">
+      <span className="text-[11px] font-serif px-1.5 py-0.5 bg-amber-50 rounded border border-amber-200 text-amber-900 select-none pointer-events-none">
         {stk.name}
       </span>
     );
@@ -245,6 +248,8 @@ export const DraggableStickerCanvas: React.FC<DraggableStickerCanvasProps> = ({
           <div
             key={stk.id}
             id={`placed-sticker-${stk.id}`}
+            draggable={false}
+            onDragStart={(e) => e.preventDefault()}
             style={{
               position: 'absolute',
               left: `${stk.x}%`,
@@ -267,11 +272,15 @@ export const DraggableStickerCanvas: React.FC<DraggableStickerCanvasProps> = ({
           >
             {/* Sticker Graphic Presentation with strict maximum boundaries */}
             <div
-              className={`relative p-1 rounded-sm transition-all duration-150 max-w-[130px] max-h-[90px] flex items-center justify-center ${
+              className={`relative p-0.5 rounded-sm flex items-center justify-center select-none pointer-events-none ${
                 isSelected && !isReadOnly
                   ? 'ring-2 ring-[#8C5A4B] ring-offset-2 ring-offset-transparent shadow-lg bg-[#FAF6EE]/40 backdrop-blur-[1px]'
                   : 'hover:drop-shadow-md'
-              } ${isDragging ? 'scale-105 drop-shadow-xl opacity-90' : ''}`}
+              } ${isDragging ? 'scale-105 drop-shadow-xl opacity-95 transition-none' : 'transition-all duration-150'}`}
+              style={{
+                maxWidth: '85px',
+                maxHeight: '56px'
+              }}
             >
               {renderStickerGraphic(stk, def)}
             </div>

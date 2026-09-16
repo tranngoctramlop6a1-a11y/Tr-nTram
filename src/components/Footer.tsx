@@ -34,7 +34,7 @@ export const Footer: React.FC<FooterProps> = ({ onSelectTab }) => {
                 </div>
               </div>
               <span className="font-extrabold text-lg text-slate-800 tracking-tight">
-                Bạn ơi, mình nói nè
+                Teen ơi!
               </span>
             </div>
 
@@ -195,9 +195,9 @@ export const Footer: React.FC<FooterProps> = ({ onSelectTab }) => {
             </ul>
 
             <div className="pt-2">
-              <div className="p-3 rounded-xl bg-rose-50 border border-rose-100 text-[11px] text-rose-800 space-y-1">
-                <span className="font-bold block">Tổng đài Quốc gia Bảo vệ Trẻ em: 111</span>
-                <span>Miễn phí 24/7 từ mọi thuê bao di động và điện thoại bàn.</span>
+              <div id="footer-credits-box" className="p-3 rounded-xl bg-rose-50 border border-rose-100 text-[11px] text-rose-800 space-y-1">
+                <span id="footer-credits-title" className="font-bold block">Ý tưởng của:</span>
+                <span id="footer-credits-authors" className="block font-medium text-slate-700">Ngọc Trâm, Phương Nhi, Đức Thảo</span>
               </div>
             </div>
           </div>

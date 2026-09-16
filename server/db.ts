@@ -844,7 +844,7 @@ class Database {
     const now = Date.now();
 
     const letters = Object.values(this.data.letters)
-      .filter((ltr) => userId ? ltr.sender_id === userId : !ltr.sender_id);
+      .filter((ltr) => userId ? (ltr.sender_id === userId || !ltr.sender_id) : !ltr.sender_id);
 
     return letters
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
@@ -881,6 +881,8 @@ class Database {
           days_remaining,
           seal_icon: ltr.seal_icon || '✉️',
           theme_color: ltr.theme_color || 'amber',
+          has_drawing: !!ltr.drawing_data,
+          stickers_data: ltr.stickers_data,
           condition_type: 'date',
           unlock_at: openDateStr
         };

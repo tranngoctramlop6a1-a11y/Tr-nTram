@@ -1,17 +1,25 @@
 import React from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { SeedGrowthEffect, PlantWeatherType, GardenDecorationItem } from '../../types';
+import { motion, AnimatePresence, TargetAndTransition } from 'motion/react';
+import { SeedGrowthEffect, PlantWeatherType, GardenDecorationItem, PlantEmotionType } from '../../types';
+import { WeatherEffects3D } from './WeatherEffects3D';
+import { GardenCreatures } from './GardenCreatures';
+import { PLANT_EMOTIONS } from './plantUtils';
 
 interface PlantCanvasSvgProps {
   seedCount: number;
   stage: number; // 1 to 6
   weather?: PlantWeatherType;
   decorations?: GardenDecorationItem[];
+  activeDecorations?: string[];
+  todayEmotion?: PlantEmotionType;
   hasPendingGift?: boolean;
   isSowingAnim?: boolean;
   recentlyAddedEffect?: SeedGrowthEffect | null;
   onPlantClick?: () => void;
   onOpenGift?: () => void;
+  onOpenRemoveEmotionModal?: () => void;
+  onOpenEmotionPicker?: () => void;
+  onRemoveDecoration?: (id: string) => void;
 }
 
 export const PlantCanvasSvg: React.FC<PlantCanvasSvgProps> = ({
@@ -19,122 +27,123 @@ export const PlantCanvasSvg: React.FC<PlantCanvasSvgProps> = ({
   stage,
   weather = 'sunny',
   decorations = [],
+  activeDecorations,
+  todayEmotion,
   hasPendingGift = false,
   isSowingAnim,
   recentlyAddedEffect,
   onPlantClick,
-  onOpenGift
+  onOpenGift,
+  onOpenRemoveEmotionModal,
+  onOpenEmotionPicker,
+  onRemoveDecoration
 }) => {
-  const decTypes = new Set(decorations.map((d) => d.type));
+  const activeItems = activeDecorations
+    ? decorations.filter((d) => activeDecorations.includes(d.id))
+    : decorations;
+  const decTypes = new Set(activeItems.map((d) => d.type));
+
+  // Determine dynamic plant reaction animation based on weather & interactions
+  const getPlantAnimation = (): TargetAndTransition => {
+    if (isSowingAnim) {
+      return {
+        rotate: [0, -4, 4, -2, 2, 0],
+        scale: [1, 1.08, 1],
+        transition: { duration: 0.8, ease: 'easeInOut' }
+      };
+    }
+
+    switch (weather) {
+      case 'sunny':
+      case 'gentle_sun':
+        return {
+          rotate: [-1, 1, -1],
+          scale: [1, 1.015, 1],
+          transition: { duration: 4, repeat: Infinity, ease: 'easeInOut' }
+        };
+      case 'cloudy':
+        return {
+          rotate: [-0.6, 0.6, -0.6],
+          transition: { duration: 5, repeat: Infinity, ease: 'easeInOut' }
+        };
+      case 'windy':
+        return {
+          rotate: [0, 2.5, 0.8, 2, 0],
+          transition: { duration: 3.5, repeat: Infinity, ease: 'easeInOut' }
+        };
+      case 'rainy':
+        return {
+          rotate: [-1, 0.5, -0.8, 0],
+          y: [0, 1.5, 0],
+          transition: { duration: 2.2, repeat: Infinity, ease: 'easeInOut' }
+        };
+      case 'heavy_rain':
+        return {
+          rotate: [-2.5, 3.5, -1.8, 2.5, 0],
+          y: [0, 2.5, 0],
+          transition: { duration: 2.4, repeat: Infinity, ease: 'easeInOut' }
+        };
+      case 'strong_wind':
+        return {
+          rotate: [0, 7.5, 8.5, 2, 0],
+          transition: { duration: 2.8, repeat: Infinity, ease: 'easeInOut' }
+        };
+      case 'night':
+      case 'starry_night':
+        return {
+          rotate: [-0.5, 0.5, -0.5],
+          transition: { duration: 6, repeat: Infinity, ease: 'easeInOut' }
+        };
+      case 'rainbow':
+        return {
+          scale: [1, 1.02, 1],
+          rotate: [-0.8, 0.8, -0.8],
+          transition: { duration: 4.5, repeat: Infinity, ease: 'easeInOut' }
+        };
+      default:
+        return {
+          rotate: 0
+        };
+    }
+  };
 
   return (
     <div 
       className="relative w-full max-w-[360px] sm:max-w-[420px] h-[360px] sm:h-[430px] mx-auto flex items-end justify-center select-none group"
     >
-      {/* ════════════════ WEATHER AMBIENCE LAYER ════════════════ */}
-      {/* Sun glow */}
-      {(weather === 'sunny' || weather === 'gentle_sun') && (
-        <div className="absolute top-4 right-6 w-32 h-32 bg-amber-200/50 rounded-full blur-2xl pointer-events-none animate-pulse" />
-      )}
+      {/* ════════════════ 3D WEATHER ENVIRONMENT ════════════════ */}
+      <WeatherEffects3D weather={weather} />
 
-      {/* Rain droplets */}
-      {weather === 'rainy' && (
-        <div className="absolute inset-0 overflow-hidden pointer-events-none z-10">
-          {[
-            { left: '15%', delay: 0.1, duration: 1.2 },
-            { left: '28%', delay: 0.4, duration: 1.0 },
-            { left: '42%', delay: 0.2, duration: 1.3 },
-            { left: '60%', delay: 0.5, duration: 1.1 },
-            { left: '75%', delay: 0.15, duration: 1.2 },
-            { left: '88%', delay: 0.35, duration: 1.4 },
-            { left: '35%', delay: 0.6, duration: 1.15 },
-            { left: '68%', delay: 0.7, duration: 1.25 }
-          ].map((drop, idx) => (
-            <motion.div
-              key={`rain-${idx}`}
-              initial={{ y: -20, opacity: 0.8 }}
-              animate={{ y: 400, opacity: 0 }}
-              transition={{
-                duration: drop.duration,
-                repeat: Infinity,
-                delay: drop.delay,
-                ease: 'linear'
-              }}
-              style={{ left: drop.left }}
-              className="absolute top-0 w-0.5 h-4 bg-gradient-to-b from-sky-400 to-transparent rounded-full"
-            />
-          ))}
-        </div>
-      )}
+      {/* ════════════════ ANIMATED COMPANIONS & CREATURES ════════════════ */}
+      <GardenCreatures
+        decorations={decorations}
+        activeIds={activeDecorations}
+        onRemoveDecoration={onRemoveDecoration}
+      />
 
-      {/* Rainbow Arc */}
-      {(weather === 'rainbow' || decTypes.has('rainbow')) && (
-        <div className="absolute top-2 left-1/2 -translate-x-1/2 w-64 h-32 pointer-events-none opacity-60">
-          <svg viewBox="0 0 200 100" className="w-full h-full overflow-visible">
-            <path d="M 10 100 A 90 90 0 0 1 190 100" fill="none" stroke="#FDA4AF" strokeWidth="3" opacity="0.6" />
-            <path d="M 15 100 A 85 85 0 0 1 185 100" fill="none" stroke="#FDE047" strokeWidth="3" opacity="0.6" />
-            <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#86EFAC" strokeWidth="3" opacity="0.6" />
-            <path d="M 25 100 A 75 75 0 0 1 175 100" fill="none" stroke="#93C5FD" strokeWidth="3" opacity="0.6" />
-            <path d="M 30 100 A 70 70 0 0 1 170 100" fill="none" stroke="#D8B4FE" strokeWidth="3" opacity="0.6" />
-          </svg>
-        </div>
-      )}
-
-      {/* Night Sky / Moon */}
-      {(weather === 'night' || weather === 'starry_night' || decTypes.has('moon')) && (
-        <div className="absolute top-6 left-8 pointer-events-none flex items-center gap-2">
-          <div className="w-8 h-8 rounded-full bg-amber-100/90 shadow-[0_0_16px_rgba(254,240,138,0.7)] flex items-center justify-center text-xs">
-            🌙
-          </div>
-        </div>
-      )}
-
-      {/* Floating Cloud */}
-      {(weather === 'cloudy' || decTypes.has('cloud')) && (
-        <motion.div
-          animate={{ x: [-10, 10, -10] }}
-          transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
-          className="absolute top-6 right-6 pointer-events-none text-2xl opacity-70"
-        >
-          ☁️
-        </motion.div>
-      )}
-
-      {/* Floating Fluttering Butterfly */}
-      {decTypes.has('butterfly') && (
-        <motion.div
-          animate={{
-            x: [-15, 25, -10],
-            y: [-10, 15, -10],
-            rotate: [-8, 8, -8]
-          }}
-          transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-          className="absolute top-24 left-10 text-xl pointer-events-none z-20"
-          title="Chú bướm nhỏ ghé thăm"
-        >
-          🦋
-        </motion.div>
-      )}
-
-      {/* ════════════════ SURPRISE PENDING GIFT ════════════════ */}
+      {/* ════════════════ SURPRISE PENDING GIFT (Notice & Bounce) ════════════════ */}
       <AnimatePresence>
         {hasPendingGift && (
           <motion.div
-            initial={{ scale: 0, y: -20 }}
-            animate={{ scale: 1, y: [0, -6, 0] }}
+            initial={{ scale: 0, y: -20, opacity: 0 }}
+            animate={{ scale: 1, y: [0, -8, 0], opacity: 1 }}
             exit={{ scale: 0, opacity: 0 }}
-            transition={{ y: { duration: 1.5, repeat: Infinity, ease: 'easeInOut' } }}
+            transition={{ y: { duration: 1.4, repeat: Infinity, ease: 'easeInOut' } }}
             onClick={(e) => {
               e.stopPropagation();
               onOpenGift?.();
             }}
-            className="absolute top-8 sm:top-10 left-1/2 -translate-x-1/2 z-30 cursor-pointer group flex flex-col items-center"
+            className="absolute top-6 sm:top-8 left-1/2 -translate-x-1/2 z-30 cursor-pointer group flex flex-col items-center"
           >
-            <div className="px-3 py-1 rounded-full bg-amber-500 text-white font-black text-xs shadow-lg flex items-center gap-1.5 animate-bounce">
+            <motion.div
+              animate={{ scale: [1, 1.06, 1] }}
+              transition={{ duration: 1.5, repeat: Infinity }}
+              className="px-3 py-1.5 rounded-full bg-gradient-to-r from-amber-500 to-rose-500 text-white font-black text-xs shadow-lg flex items-center gap-1.5 border border-amber-300"
+            >
               <span>🎁</span>
-              <span>Có quà rơi ra! Nhấn mở</span>
-            </div>
-            <div className="text-3xl filter drop-shadow-md">
+              <span>Cây có quà tặng bạn! Nhấn mở</span>
+            </motion.div>
+            <div className="text-4xl filter drop-shadow-md mt-1 animate-bounce">
               🎁
             </div>
           </motion.div>
@@ -143,16 +152,12 @@ export const PlantCanvasSvg: React.FC<PlantCanvasSvgProps> = ({
 
       {/* ════════════════ PLANT SVG GRAPHIC ════════════════ */}
       <motion.div
-        animate={
-          isSowingAnim
-            ? { rotate: [0, -4, 4, -2, 2, 0], scale: [1, 1.05, 1] }
-            : { rotate: 0 }
-        }
-        transition={{ duration: 0.8, ease: 'easeInOut' }}
+        animate={getPlantAnimation()}
+        style={{ transformOrigin: 'bottom center' }}
         whileHover={{ scale: 1.015 }}
         whileTap={{ rotate: [-2, 2, 0], scale: 0.985 }}
         onClick={onPlantClick}
-        className="w-full h-full relative flex items-end justify-center cursor-pointer"
+        className="w-full h-full relative z-10 flex items-end justify-center cursor-pointer"
         title="Nhấn nhẹ để chào cái cây của bạn 🌱"
       >
         <svg
@@ -549,6 +554,59 @@ export const PlantCanvasSvg: React.FC<PlantCanvasSvgProps> = ({
           )}
         </svg>
       </motion.div>
+
+      {/* ════════════════ HẠT MẦM CẢM XÚC TRÊN CHẬU CÂY (Interactive Emotion Seed Badge) ════════════════ */}
+      {todayEmotion ? (
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenRemoveEmotionModal?.();
+          }}
+          className="absolute bottom-[5%] sm:bottom-[7%] left-1/2 -translate-x-1/2 z-25 group/seed cursor-pointer"
+          title="Hạt mầm cảm xúc hôm nay • Nhấn để gỡ bỏ khỏi chậu"
+        >
+          <motion.div
+            whileHover={{ scale: 1.08, y: -2 }}
+            whileTap={{ scale: 0.94 }}
+            className="bg-amber-50/95 hover:bg-white text-stone-800 border border-amber-300 shadow-sm hover:shadow-md px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-full flex items-center gap-2 backdrop-blur-xs transition-all select-none"
+          >
+            <span
+              className="text-base sm:text-lg leading-none animate-bounce"
+              style={{ animationDuration: '3s' }}
+            >
+              {PLANT_EMOTIONS.find((e) => e.id === todayEmotion)?.emoji || '🌱'}
+            </span>
+            <div className="flex flex-col text-left">
+              <span className="text-[9px] text-amber-800 font-semibold leading-none">Hạt mầm</span>
+              <span className="text-xs font-black text-slate-800 leading-tight">
+                {PLANT_EMOTIONS.find((e) => e.id === todayEmotion)?.label || 'Cảm xúc'}
+              </span>
+            </div>
+            <span className="text-[10px] font-bold text-rose-600 bg-rose-50 group-hover/seed:bg-rose-100 px-1.5 py-0.5 rounded-full border border-rose-200/80 ml-0.5 flex items-center gap-0.5 transition-colors">
+              <span>✕</span>
+              <span className="hidden sm:inline">Gỡ</span>
+            </span>
+          </motion.div>
+        </div>
+      ) : (
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenEmotionPicker?.();
+          }}
+          className="absolute bottom-[5%] sm:bottom-[7%] left-1/2 -translate-x-1/2 z-25 group/empty cursor-pointer"
+          title="Chậu cây đang trống • Nhấn để chọn hoặc gieo cảm xúc hôm nay"
+        >
+          <motion.div
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.94 }}
+            className="bg-white/85 hover:bg-white text-stone-500 hover:text-emerald-700 border border-dashed border-stone-300 hover:border-emerald-400 px-3 py-1 rounded-full flex items-center gap-1.5 text-[11px] font-bold backdrop-blur-2xs transition-all shadow-2xs select-none"
+          >
+            <span className="text-emerald-600">🌱</span>
+            <span>Chậu trống • Chạm để gieo</span>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 };

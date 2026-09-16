@@ -698,9 +698,24 @@ ${lastBotReply || '(Chưa có câu trả lời trước)'}
 
   } catch (error: unknown) {
     console.error('Error in /api/chat:', error);
+    try {
+      const userPrompt = req.body?.messages?.[req.body?.messages?.length - 1]?.content || '';
+      if (userPrompt) {
+        const fallbackReply = sanitizeBotReply(
+          generateSmartFallback(userPrompt, req.body?.supportMode || 'general', undefined),
+          req.body?.recentResponseMemory?.history
+        );
+        if (fallbackReply) {
+          return res.json({ reply: fallbackReply, source: 'error_fallback' });
+        }
+      }
+    } catch (fallbackErr) {
+      console.warn('Fallback error in /api/chat catch:', fallbackErr);
+    }
+
     res.status(500).json({
       error: 'Internal server error',
-      reply: 'Tớ xin lỗi nhé, mạng bị lag xíu ấy. Cậu gửi lại tin nhắn cho tớ nha! 🫂'
+      reply: 'Tớ đang gặp chút trục trặc khi xử lý tin nhắn. Bạn bấm thử lại tin này giúp tớ nhé! 🫂'
     });
   }
 });
@@ -1657,6 +1672,34 @@ app.post('/api/sticky-notes/:id/like', (req, res) => {
   } catch (error) {
     res.status(500).json({ success: false });
   }
+});
+
+// ============================================================================
+// SCENARIO SYSTEM (MÌNH NÊN LÀM GÌ?)
+// ============================================================================
+
+app.get('/api/scenarios/categories', (req, res) => {
+  res.json({
+    categories: [
+      { id: 'study_pressure', title: 'Áp lực học tập', icon: '📚' },
+      { id: 'friendship', title: 'Bạn bè', icon: '👭' },
+      { id: 'romance', title: 'Tình cảm', icon: '❤️' },
+      { id: 'family', title: 'Gia đình', icon: '🏠' },
+      { id: 'rejection', title: 'Bị từ chối', icon: '😣' },
+      { id: 'saying_no', title: 'Không biết nói “không”', icon: '🙅' },
+      { id: 'anxiety', title: 'Lo lắng', icon: '😰' },
+      { id: 'anger_temper', title: 'Dễ nổi nóng', icon: '😡' },
+      { id: 'disappointment', title: 'Cảm thấy thất vọng', icon: '😔' },
+      { id: 'social_media', title: 'Mạng xã hội', icon: '📱' },
+      { id: 'time_management', title: 'Quản lý thời gian', icon: '⏰' },
+      { id: 'feeling_left_out', title: 'Cảm thấy bị bỏ rơi', icon: '🫥' },
+      { id: 'achievement_pressure', title: 'Áp lực thành tích', icon: '🎯' },
+      { id: 'expressing_thoughts', title: 'Khó nói ra suy nghĩ', icon: '💬' }
+    ],
+    totalCategories: 14,
+    questionsPerCategory: 55,
+    totalQuestions: 770
+  });
 });
 
 // ============================================================================

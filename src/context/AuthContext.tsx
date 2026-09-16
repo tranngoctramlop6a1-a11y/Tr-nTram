@@ -95,6 +95,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
         }
       }
+
+      // Khôi phục từ profile active gần nhất nếu có
+      const masterProfile = localStorage.getItem('teen_current_user_profile');
+      if (masterProfile) {
+        const parsed = JSON.parse(masterProfile);
+        if (parsed && parsed.id) {
+          return {
+            id: parsed.id,
+            email: parsed.email || '',
+            nickname: parsed.nickname || 'Bạn',
+            avatar: parsed.avatar || '🌱',
+            created_at: parsed.created_at || new Date().toISOString(),
+            createdAt: parsed.createdAt || parsed.created_at || new Date().toISOString()
+          };
+        }
+      }
     } catch {}
     return null;
   });
@@ -176,6 +192,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     localStorage.setItem(TOKEN_KEY, activeToken);
     localStorage.setItem(WELCOMED_KEY, 'account');
+    localStorage.setItem('teen_current_user_profile', JSON.stringify(userData));
     if (cleanEmail) {
       localStorage.setItem(ACTIVE_USER_EMAIL_KEY, cleanEmail);
       localStorage.setItem(userKey, JSON.stringify(userData));
@@ -406,6 +423,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = useCallback(async () => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(ACTIVE_USER_EMAIL_KEY);
+    localStorage.removeItem('teen_current_user_profile');
     setToken(null);
     setUser(null);
     setIsGuest(true);
@@ -414,10 +432,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const updateProfile = useCallback(async (nickname: string, avatar: string) => {
-    if (user && user.email) {
+    if (user) {
       const updated: AuthUser = { ...user, nickname, avatar };
       setUser(updated);
-      localStorage.setItem(getUserStorageKey(user.email), JSON.stringify(updated));
+      localStorage.setItem('teen_current_user_profile', JSON.stringify(updated));
+      if (user.email) {
+        localStorage.setItem(getUserStorageKey(user.email), JSON.stringify(updated));
+        localStorage.setItem(ACTIVE_USER_EMAIL_KEY, user.email);
+      } else {
+        localStorage.setItem(`teen_user_data_${user.id}`, JSON.stringify(updated));
+      }
 
       if (token) {
         fetch('/api/users/profile', {
@@ -434,10 +458,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user, token]);
 
   const uploadAvatar = useCallback(async (avatarDataUrl: string) => {
-    if (user && user.email) {
+    if (user) {
       const updated: AuthUser = { ...user, avatar: avatarDataUrl };
       setUser(updated);
-      localStorage.setItem(getUserStorageKey(user.email), JSON.stringify(updated));
+      localStorage.setItem('teen_current_user_profile', JSON.stringify(updated));
+      if (user.email) {
+        localStorage.setItem(getUserStorageKey(user.email), JSON.stringify(updated));
+        localStorage.setItem(ACTIVE_USER_EMAIL_KEY, user.email);
+      } else {
+        localStorage.setItem(`teen_user_data_${user.id}`, JSON.stringify(updated));
+      }
 
       if (token) {
         fetch('/api/users/avatar', {
@@ -454,10 +484,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user, token]);
 
   const removeAvatar = useCallback(async () => {
-    if (user && user.email) {
+    if (user) {
       const updated: AuthUser = { ...user, avatar: '🌱' };
       setUser(updated);
-      localStorage.setItem(getUserStorageKey(user.email), JSON.stringify(updated));
+      localStorage.setItem('teen_current_user_profile', JSON.stringify(updated));
+      if (user.email) {
+        localStorage.setItem(getUserStorageKey(user.email), JSON.stringify(updated));
+      } else {
+        localStorage.setItem(`teen_user_data_${user.id}`, JSON.stringify(updated));
+      }
 
       if (token) {
         fetch('/api/users/avatar', {

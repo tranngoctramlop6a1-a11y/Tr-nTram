@@ -23,7 +23,8 @@ import {
   Lock,
   KeyRound,
   Eye,
-  EyeOff
+  EyeOff,
+  Plus
 } from 'lucide-react';
 import { UserAvatar } from '../common/UserAvatar';
 import { DailyAdviceSparkle } from '../common/DailyAdviceSparkle';
@@ -476,12 +477,20 @@ export const ProfileModal: React.FC = () => {
                             </button>
                           </div>
                           <div className="grid grid-cols-8 gap-1">
-                            {AVATAR_PRESETS.slice(0, 16).map((emoji) => (
+                            <button
+                              type="button"
+                              onClick={() => fileInputRef.current?.click()}
+                              className="h-8 rounded-lg border border-dashed border-teal-400 bg-teal-50 hover:bg-teal-100 flex items-center justify-center text-teal-700 transition-all cursor-pointer"
+                              title="Tải ảnh cá nhân lên (+)"
+                            >
+                              <Plus className="w-3.5 h-3.5 text-teal-600" />
+                            </button>
+                            {AVATAR_PRESETS.slice(0, 15).map((emoji) => (
                               <button
                                 key={emoji}
                                 type="button"
                                 onClick={() => handleSelectEmojiAvatar(emoji)}
-                                className={`h-8 rounded-lg text-base flex items-center justify-center hover:bg-white hover:shadow-xs transition-all ${
+                                className={`h-8 rounded-lg text-base flex items-center justify-center hover:bg-white hover:shadow-xs transition-all cursor-pointer ${
                                   user.avatar === emoji ? 'bg-teal-100 ring-2 ring-teal-500' : ''
                                 }`}
                               >
