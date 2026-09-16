@@ -3,8 +3,8 @@
  * 
  * Đảm bảo trải nghiệm tâm sự luôn liền mạch, ấm áp và êm đềm ngay cả khi:
  * - Thiết bị mất kết nối mạng / wifi chập chờn
- * - API Gemini gặp sự cố hoặc timeout
- * - Chưa cấu hình API Key
+ * - API Grok (xAI) gặp sự cố hoặc timeout
+ * - Chưa cấu hình XAI_API_KEY
  * Thay vì hiện lỗi "mạng chập chờn / lỗi hệ thống", hệ thống sẽ trả về
  * phản hồi thấu cảm chuẩn phong cách Warm Minimalist của người bạn thân.
  */

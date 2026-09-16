@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Vercel CDN output from `vite build --outDir public`
+/public/
