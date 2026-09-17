@@ -304,7 +304,7 @@ function AppContent() {
                       className="w-full py-2.5 px-4 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                       <PhoneCall className="w-3.5 h-3.5" />
-                      <span>Cần hotline hỗ trợ khẩn: Gọi 111</span>
+                      <span>Kênh hỗ trợ khẩn cấp</span>
                     </button>
                   </div>
 
@@ -541,7 +541,7 @@ function AppContent() {
                     Bạn đang cảm thấy quá tải hoặc cần người lắng nghe ngay?
                   </h4>
                   <p className="text-xs sm:text-sm text-rose-100 max-w-xl">
-                    Đừng giữ mọi thứ một mình. Bạn có thể trò chuyện cùng chatbot “Bạn ơi, mình nói nè” hoặc gọi miễn phí tới Tổng đài Quốc gia 111.
+                    Đừng giữ mọi thứ một mình. Bạn có thể trò chuyện cùng chatbot “Có chuyện gì, cứ kể mình nghe” hoặc tìm kiếm trợ giúp từ người lớn đáng tin cậy.
                   </p>
                 </div>
 
@@ -556,7 +556,7 @@ function AppContent() {
                     onClick={() => setCurrentTab('help')}
                     className="px-5 py-3 rounded-2xl bg-rose-700/60 hover:bg-rose-700/80 text-white font-bold text-sm shadow-md transition-all cursor-pointer"
                   >
-                    Tổng đài 111
+                    Trợ giúp khẩn cấp
                   </button>
                 </div>
               </div>

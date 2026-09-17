@@ -32,8 +32,8 @@ export function getGentleFallbackResponse(
   ) {
     return `Tớ nghe đây, và tớ thật sự rất lo cho cậu... 🫂 Cảm giác kiệt sức và bế tắc lúc này chắc chắn đang đè nặng lên cậu rất nhiều. Nhưng cậu ơi, sự an toàn và tính mạng của cậu là điều quý giá nhất. Cậu không phải chịu đựng cơn giông bão này một mình đâu.
 
-Tớ tha thiết mong cậu hãy mở lòng với một người lớn đáng tin cậy ở gần (bố mẹ, người thân, thầy cô), hoặc liên hệ ngay với:
-- 📞 **Tổng đài Quốc gia Bảo vệ Trẻ em: 111** (miễn phí, 24/7, luôn có chuyên viên đồng hành cùng cậu).
+Tớ tha thiết mong cậu hãy mở lòng với một người lớn đáng tin cậy ở gần (bố mẹ, người thân, thầy cô), hoặc tìm đến phòng tư vấn tâm lý học đường.
+Trong trường hợp nguy cấp đến sức khỏe thể chất, hãy gọi ngay cấp cứu:
 - 🚑 **Cấp cứu y tế: 115**.
 
 Tớ luôn ngồi ở đây lắng nghe cậu, hãy giữ an toàn cho mình nhé, bạn của tớ! 💗`;

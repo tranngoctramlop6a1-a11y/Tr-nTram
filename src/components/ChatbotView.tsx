@@ -753,17 +753,6 @@ export const ChatbotView: React.FC<ChatbotViewProps> = ({
               </button>
             )}
 
-            {/* Emergency Hotline 111 badge */}
-            <a
-              href="tel:111"
-              className="px-3 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors"
-              title="Gọi Tổng đài Quốc gia Bảo vệ Trẻ em"
-            >
-              <PhoneCall className="w-3.5 h-3.5 animate-bounce" />
-              <span className="hidden sm:inline">Cấp cứu/Tư vấn: 111</span>
-              <span className="sm:hidden">111</span>
-            </a>
-
             {/* Fullscreen Toggle button */}
             <button
               id="btn-toggle-fullscreen-chat"
@@ -902,20 +891,14 @@ export const ChatbotView: React.FC<ChatbotViewProps> = ({
               Bạn ơi, bạn rất quan trọng và sự an toàn của bạn là trên hết! 💗
             </h4>
             <p className="text-xs sm:text-sm text-rose-100 leading-relaxed">
-              Nếu bạn đang cảm thấy muốn tự làm tổn thương bản thân hoặc gặp nguy hiểm, hãy mở lòng với một người lớn bạn tin tưởng ngay bên cạnh, hoặc gọi miễn phí tới:
+              Nếu bạn đang cảm thấy muốn tự làm tổn thương bản thân hoặc gặp nguy hiểm, hãy mở lòng với một người lớn bạn tin tưởng ngay bên cạnh, hoặc liên hệ cơ sở y tế gần nhất:
             </p>
             <div className="pt-1 flex items-center gap-3">
               <a
-                href="tel:111"
+                href="tel:115"
                 className="px-4 py-1.5 bg-white text-rose-600 font-extrabold text-xs rounded-xl shadow-xs hover:bg-rose-50"
               >
-                📞 Gọi 111 (Tổng đài Quốc gia 24/7)
-              </a>
-              <a
-                href="tel:115"
-                className="px-4 py-1.5 bg-white/20 hover:bg-white/30 text-white font-bold text-xs rounded-xl"
-              >
-                Cấp cứu: 115
+                📞 Cấp cứu khẩn cấp: 115
               </a>
             </div>
           </div>

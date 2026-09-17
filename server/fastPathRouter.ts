@@ -491,8 +491,6 @@ export function classifyChatMessage(
 
 Mình tha thiết mong bạn hãy mở lòng với một người lớn đáng tin cậy ở gần (bố mẹ, thầy cô, người thân).
 
-Hoặc bạn hãy gọi ngay tới:
-📞 **Tổng đài Quốc gia Bảo vệ Trẻ em: 111** (Hoàn toàn miễn phí, hỗ trợ 24/7 và luôn có chuyên gia lắng nghe bạn).
 Nếu có nguy hiểm khẩn cấp ngay lúc này, hãy gọi cấp cứu **115**.
 
 Mình vẫn ở đây lắng nghe bạn, nhưng hãy để người lớn cùng bảo vệ bạn an toàn nhé! 🌷`;

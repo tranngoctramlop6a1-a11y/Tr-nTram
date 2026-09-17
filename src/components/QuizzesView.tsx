@@ -706,7 +706,7 @@ export const QuizzesView: React.FC<QuizzesViewProps> = ({ currentUserId }) => {
                     <span>Lời dặn dò an toàn & thấu cảm:</span>
                   </span>
                   <p className="leading-relaxed">
-                    Kết quả đã được lưu tự động vào mục <strong>Lịch sử của bạn</strong> để theo dõi diễn biến tâm trạng. Nếu cảm thấy bất an hay quá tải, đừng ngần ngại tâm sự với chuyên viên tư vấn hoặc gọi Tổng đài Quốc gia 111.
+                    Kết quả đã được lưu tự động vào mục <strong>Lịch sử của bạn</strong> để theo dõi diễn biến tâm trạng. Nếu cảm thấy bất an hay quá tải, đừng ngần ngại tâm sự với chuyên viên tư vấn học đường hoặc người lớn đáng tin cậy.
                   </p>
                 </div>
 

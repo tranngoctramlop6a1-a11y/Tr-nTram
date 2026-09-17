@@ -180,7 +180,7 @@ export const Footer: React.FC<FooterProps> = ({ onSelectTab }) => {
                   className="font-bold text-rose-600 hover:text-rose-700 transition-colors cursor-pointer flex items-center gap-1.5"
                 >
                   <PhoneCall className="w-3.5 h-3.5" />
-                  <span>Cần giúp đỡ khẩn cấp (Tổng đài 111)</span>
+                  <span>Cần giúp đỡ khẩn cấp</span>
                 </button>
               </li>
               <li>
@@ -197,7 +197,7 @@ export const Footer: React.FC<FooterProps> = ({ onSelectTab }) => {
             <div className="pt-2">
               <div id="footer-credits-box" className="p-3 rounded-xl bg-rose-50 border border-rose-100 text-[11px] text-rose-800 space-y-1">
                 <span id="footer-credits-title" className="font-bold block">Ý tưởng của:</span>
-                <span id="footer-credits-authors" className="block font-medium text-slate-700">Đội ngũ Học sinh Dự án Safe Space</span>
+                <span id="footer-credits-authors" className="block font-medium text-slate-700">Ngọc Trâm, Phương Nhi, Đức Thảo</span>
               </div>
             </div>
           </div>

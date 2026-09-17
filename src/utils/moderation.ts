@@ -40,7 +40,7 @@ export function checkContentModeration(text: string): ModerationResult {
       return {
         isSafe: true, // Allow sharing their distress, but flag an emergency banner
         isEmergency: true,
-        warning: 'Chúng mình nhận thấy bạn đang trải qua cảm xúc vô cùng nặng nề. Xin bạn nhớ rằng bạn không phải chịu đựng một mình. Hãy liên hệ ngay Tổng đài Quốc gia 111 (miễn phí) hoặc người lớn đáng tin cậy nhé!'
+        warning: 'Chúng mình nhận thấy bạn đang trải qua cảm xúc vô cùng nặng nề. Xin bạn nhớ rằng bạn không phải chịu đựng một mình. Hãy chia sẻ ngay với thầy cô, cha mẹ hoặc người lớn đáng tin cậy nhé!'
       };
     }
   }

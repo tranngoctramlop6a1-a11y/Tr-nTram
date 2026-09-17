@@ -177,7 +177,7 @@ export const CreateConfessionModal: React.FC<CreateConfessionModalProps> = ({
                 onClick={onGoToHelp}
                 className="px-3 py-1.5 rounded-xl bg-rose-600 text-white font-bold text-xs hover:bg-rose-700"
               >
-                Xem Tổng đài hỗ trợ 111 & Hướng dẫn bình tâm
+                Xem Hướng dẫn bình tâm & Kênh hỗ trợ
               </button>
             </div>
           </div>

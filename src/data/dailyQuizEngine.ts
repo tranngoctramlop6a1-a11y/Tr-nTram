@@ -179,7 +179,7 @@ export const WEEKDAY_QUIZZES: Record<number, {
         actionAdvice: [
           'Hãy cho phép bản thân nghỉ ngơi 1 buổi tối hôm nay không chạm vào sách vở.',
           'Tâm sự thật lòng với người bạn tin cậy hoặc giáo viên chủ nhiệm về khối lượng bài vở.',
-          'Nhớ rằng bạn không đơn độc, hãy gọi 111 nếu cảm thấy quá bế tắc.'
+          'Nhớ rằng bạn không đơn độc, hãy tìm kiếm sự trợ giúp nếu cảm thấy quá bế tắc.'
         ]
       }
     }
@@ -491,7 +491,7 @@ export const WEEKDAY_QUIZZES: Record<number, {
         summary: 'Bạn đang trải qua sự tổn thương sâu sắc do bị xa lánh hoặc bạo lực tinh thần trong trường học. Đây là điều không một ai đáng phải chịu đựng!',
         actionAdvice: [
           'Nói ngay với giáo viên chủ nhiệm hoặc chuyên viên tâm lý của trường.',
-          'Nếu bị bắt nạt, hãy lưu lại bằng chứng và liên hệ tổng đài 111 để được bảo vệ kịp thời.'
+          'Nếu bị bắt nạt, hãy lưu lại bằng chứng và liên hệ phòng tư vấn học đường hoặc đường dây nóng phòng chống bạo lực (1800 1567).'
         ]
       }
     }
@@ -647,7 +647,7 @@ export const WEEKDAY_QUIZZES: Record<number, {
         summary: 'Môi trường gia đình đang gây ra những vết thương tâm lý nghiêm trọng cho bạn. Bạn cảm thấy ngột ngạt và tuyệt vọng.',
         actionAdvice: [
           'Ưu tiên giữ an toàn cho sức khỏe tinh thần và thể chất của mình.',
-          'Liên hệ ngay với chuyên gia tâm lý học đường hoặc gọi Tổng đài Quốc gia 111 để được tư vấn bảo vệ an toàn.'
+          'Liên hệ ngay với chuyên gia tâm lý học đường hoặc đường dây tư vấn tâm lý (1900 6233) để được tư vấn bảo vệ an toàn.'
         ]
       }
     }

@@ -147,7 +147,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         {
           id: 'help',
           label: 'Cần giúp đỡ khẩn cấp',
-          description: 'Đường dây nóng 111, trợ giúp tâm lý tức thì',
+          description: 'Trợ giúp tâm lý & tư vấn tức thì',
           icon: <LifeBuoy className="w-4 h-4 text-red-600" />,
           category: 'support'
         }
@@ -209,10 +209,10 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
               <button
                 onClick={() => handleNavClick('help')}
-                className="flex items-center gap-1.5 font-serif font-bold text-rose-700 hover:text-rose-800 transition-colors cursor-pointer bg-white/80 px-2 py-0.5 rounded-full border border-rose-200/80 shadow-2xs"
+                className="flex items-center gap-1.5 font-serif font-bold text-rose-700 hover:text-rose-800 transition-colors cursor-pointer bg-white/80 px-2.5 py-0.5 rounded-full border border-rose-200/80 shadow-2xs"
               >
                 <PhoneCall className="w-3.5 h-3.5 text-rose-600 animate-bounce" />
-                <span>Gọi 111 (Miễn phí)</span>
+                <span>Trợ giúp khẩn cấp</span>
               </button>
             </div>
           </div>
@@ -570,7 +570,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               >
                 <div className="flex items-center gap-2">
                   <LifeBuoy className="w-4 h-4 text-red-600" />
-                  <span>Cần giúp đỡ khẩn cấp (Tổng đài 111)</span>
+                  <span>Cần giúp đỡ khẩn cấp</span>
                 </div>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
@@ -746,7 +746,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       Cần giúp đỡ khẩn cấp
                     </div>
                     <p className="text-[11px] mt-0.5 opacity-80">
-                      Tổng đài 111 & liên hệ hỗ trợ tâm lý 24/7
+                      Đường dây nóng & liên hệ hỗ trợ tâm lý 24/7
                     </p>
                   </div>
                 </button>

@@ -1064,7 +1064,7 @@ export const QUIZZES: Quiz[] = [
         summary: 'Không khí gia đình đang gây tổn thương sâu sắc tới sức khỏe tinh thần của bạn.',
         actionAdvice: [
           'Ưu tiên bảo vệ an toàn cảm xúc của bản thân, tránh đối đầu trực diện khi cả hai bên đang nóng giận.',
-          'Tìm kiếm sự hỗ trợ từ chuyên viên tư vấn học đường hoặc gọi Tổng đài 111 để được hướng dẫn cách giải tỏa.'
+          'Tìm kiếm sự hỗ trợ từ chuyên viên tư vấn học đường hoặc phòng tham vấn tâm lý để được hướng dẫn cách giải tỏa.'
         ]
       }
     }
@@ -1693,7 +1693,7 @@ export const SCHOOL_ISSUES: SchoolIssueTopic[] = [
     whoToTurnTo: [
       'Ban giám hiệu và bảo vệ nhà trường.',
       'Bố mẹ và người thân.',
-      'Tổng đài Quốc gia Bảo vệ Trẻ em 111 (hoạt động 24/7, miễn cước).'
+      'Phòng tham vấn tâm lý học đường hoặc đường dây nóng phòng chống bạo lực học đường (1800 1567).'
     ]
   },
   {
@@ -1821,13 +1821,6 @@ export const STICKY_NOTES: StickyNote[] = [
 
 export const EMERGENCY_CONTACTS = [
   {
-    name: 'Tổng đài Quốc gia Bảo vệ Trẻ em',
-    number: '111',
-    description: 'Miễn cước gọi 24/7 trên toàn quốc. Tư vấn bảo vệ trẻ em và thanh thiếu niên khỏi bạo lực, xâm hại, bóc lột và khủng hoảng tinh thần.',
-    badge: 'Khẩn cấp miễn phí 24/7',
-    badgeColor: 'bg-rose-100 text-rose-800'
-  },
-  {
     name: 'Đường dây nóng Tư vấn Tâm lý Ngày Đêm',
     number: '1900 6233',
     description: 'Tư vấn tâm lý chuyên sâu về các vấn đề trầm cảm, lo âu, mâu thuẫn gia đình và học đường cho thanh thiếu niên.',
@@ -1847,5 +1840,12 @@ export const EMERGENCY_CONTACTS = [
     description: 'Nơi có thầy cô tư vấn tâm lý được đào tạo chuyên môn. Mọi câu chuyện bạn chia sẻ đều được bảo mật an toàn.',
     badge: 'Trực tiếp tại trường',
     badgeColor: 'bg-emerald-100 text-emerald-800'
+  },
+  {
+    name: 'Cấp cứu Y tế Khẩn cấp',
+    number: '115',
+    description: 'Hỗ trợ y tế và cấp cứu tức thời trong các tình huống nguy cấp đến sức khỏe và tính mạng.',
+    badge: 'Cấp cứu 24/7',
+    badgeColor: 'bg-rose-100 text-rose-800'
   }
 ];

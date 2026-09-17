@@ -290,7 +290,7 @@ export const COMPREHENSIVE_QUIZZES: ComprehensiveQuiz[] = [
         actionAdvice: [
           'Hãy dừng lại ngay hôm nay: Cho phép bản thân được nghỉ ngơi một ngày không đụng tới sách vở.',
           'Chia sẻ trung thực với bố mẹ hoặc thầy cô về tình trạng quá tải hiện tại.',
-          'Nếu cảm thấy bế tắc, hãy liên hệ Tổng đài Quốc gia Bảo vệ Trẻ em 111 (miễn phí 24/7) để có chuyên viên lắng nghe và hỗ trợ.'
+          'Nếu cảm thấy bế tắc, hãy tìm đến phòng tham vấn tâm lý học đường hoặc đường dây nóng tư vấn tâm lý (1900 6233).'
         ],
         tendencyInsight: 'Xu hướng nổi bật: Báo động kiệt sức. Cần ưu tiên phục hồi sức khỏe thể chất và tinh thần trước khi đặt ra bất kỳ mục tiêu điểm số nào.'
       }
@@ -456,7 +456,7 @@ export const COMPREHENSIVE_QUIZZES: ComprehensiveQuiz[] = [
         actionAdvice: [
           'Cần có sự can thiệp và hỗ trợ từ gia đình ngay lập tức để giảm tải toàn diện.',
           'Tạm dừng các kỳ thi thử không bắt buộc.',
-          'Liên hệ chuyên gia tâm lý học đường hoặc tổng đài 111 để được hỗ trợ chuyên sâu.'
+          'Liên hệ chuyên gia tâm lý học đường hoặc đường dây tư vấn tâm lý (1900 6233) để được hỗ trợ chuyên sâu.'
         ],
         tendencyInsight: 'Tình trạng quá tải khẩn cấp. Cần ưu tiên tuyệt đối cho việc nghỉ ngơi và hồi phục sức khỏe.'
       }

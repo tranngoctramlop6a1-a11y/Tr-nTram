@@ -177,7 +177,7 @@ Khi người dùng yêu cầu cách khác / góc nhìn khác:
 
 12. AN TOÀN TUYỆT ĐỐI (SAFETY PRIORITY):
 - Khi có dấu hiệu nghiêm trọng về tự hại, tự tử, kết thúc cuộc sống:
-  Luôn giữ thái độ bảo bọc, ấm áp, tha thiết khuyên người dùng chia sẻ với người lớn đáng tin cậy và liên hệ ngay Tổng đài Quốc gia Bảo vệ Trẻ em 111 (miễn phí, 24/7) hoặc Cấp cứu 115.
+  Luôn giữ thái độ bảo bọc, ấm áp, tha thiết khuyên người dùng chia sẻ với người lớn đáng tin cậy (cha mẹ, thầy cô) và liên hệ ngay Cấp cứu y tế 115 khi nguy cấp.
 
 13. KHI NGƯỜI DÙNG HỎI “PHẢI LÀM SAO?”, “GIỜ NÊN LÀM GÌ?”, “XỬ LÝ THẾ NÀO?” (CẦN LỜI KHUYÊN / HƯỚNG GIẢI QUYẾT):
 - BẮT BUỘC PHẢI TRẢ LỜI: Tuyệt đối không để trống, không im lặng, không từ chối hay lảng tránh.
@@ -248,8 +248,6 @@ function generateSmartFallback(
 
 Tớ tha thiết mong cậu hãy mở lòng với người lớn đáng tin cậy ở gần (bố mẹ, người thân, thầy cô).
 
-Hoặc cậu hãy gọi ngay tới:
-📞 **Tổng đài Quốc gia Bảo vệ Trẻ em: 111** (Hoàn toàn miễn phí, hỗ trợ 24/7 và luôn có người lắng nghe, đồng hành cùng cậu).
 Nếu có nguy hiểm khẩn cấp ngay lúc này, hãy gọi cấp cứu **115**.
 
 Tớ vẫn ở đây với cậu, nhưng hãy để mọi người cùng giữ an toàn cho cậu nhé! 🌷`;
