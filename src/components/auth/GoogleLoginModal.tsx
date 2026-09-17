@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../../context/AuthContext';
 import { 
@@ -52,6 +52,37 @@ export const GoogleLoginModal: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Clear form state when modal opens or closes, or when account logs out
+  useEffect(() => {
+    if (isLoginModalOpen) {
+      setEmail('');
+      setPassword('');
+      setConfirmPassword('');
+      setNickname('');
+      setResetCode('');
+      setErrorMessage(null);
+      setSuccessMessage(null);
+      setShowPassword(false);
+      setShowConfirmPassword(false);
+    }
+  }, [isLoginModalOpen]);
+
+  useEffect(() => {
+    const handleAccountChanged = (e: any) => {
+      if (e.detail?.action === 'logout') {
+        setEmail('');
+        setPassword('');
+        setConfirmPassword('');
+        setNickname('');
+        setResetCode('');
+        setErrorMessage(null);
+        setSuccessMessage(null);
+      }
+    };
+    window.addEventListener('teen_account_changed', handleAccountChanged);
+    return () => window.removeEventListener('teen_account_changed', handleAccountChanged);
+  }, []);
 
   if (!isLoginModalOpen) return null;
 
@@ -295,7 +326,7 @@ export const GoogleLoginModal: React.FC = () => {
                         setEmail(e.target.value);
                         setErrorMessage(null);
                       }}
-                      placeholder="ví dụ: tranngoctramlop6a1@gmail.com"
+                      placeholder="nguyenvanA@gmail.com"
                       className="w-full pl-9 pr-3.5 py-2.5 text-xs rounded-xl border border-gray-200 focus:outline-hidden focus:ring-2 focus:ring-teal-400 bg-gray-50/50"
                     />
                     <Mail className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -412,7 +443,7 @@ export const GoogleLoginModal: React.FC = () => {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Nhập email của bạn"
+                  placeholder="nguyenvanA@gmail.com"
                   className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-gray-200 focus:outline-hidden focus:ring-2 focus:ring-teal-400 bg-gray-50/50"
                 />
               </div>
@@ -486,7 +517,7 @@ export const GoogleLoginModal: React.FC = () => {
                   type="text"
                   value={nickname}
                   onChange={(e) => setNickname(e.target.value)}
-                  placeholder="Ví dụ: Bạn nhỏ, Mây bay..."
+                  placeholder="Nhập nickname của bạn"
                   className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-gray-200 focus:outline-hidden focus:ring-2 focus:ring-teal-400 bg-gray-50/50"
                 />
               </div>

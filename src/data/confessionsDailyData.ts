@@ -9,8 +9,10 @@
 
 export interface ConfessionCommentItem {
   id: string;
+  userId?: string | null;
   author: string;
   authorType: 'user' | 'ai';
+  source?: 'user' | 'ai';
   avatarSeed: string;
   content: string;
   createdAt: string; // ISO string
@@ -19,6 +21,8 @@ export interface ConfessionCommentItem {
 
 export interface ConfessionItem {
   id: string;
+  userId?: string | null;
+  source?: 'user' | 'ai';
   title: string;
   content: string;
   category: 'Gia đình' | 'Học tập' | 'Tình bạn' | 'Bản thân' | 'Trường học' | 'Tình cảm' | 'Khác';
@@ -197,73 +201,8 @@ export const AI_DAILY_BATCHES = [
   ]
 ];
 
-// Initial real user community contributions (clearly labelled "👤 Người dùng")
-export const INITIAL_USER_COMMUNITY_POSTS = [
-  {
-    title: 'Hôm nay mình đã dũng cảm xin lỗi mẹ trước',
-    content: 'Tối qua hai mẹ con cãi nhau vì mẹ bắt mình tắt máy tính đi ngủ sớm trong khi bài tập chưa xong. Sáng nay tỉnh dậy, thấy mẹ vẫn dậy sớm nấu xôi chuẩn bị cho mình đi học. Mình bước lại ôm mẹ từ phía sau và nói: "Con xin lỗi mẹ, tối qua con nói năng hơi hỗn". Mẹ cười và bảo ăn nhanh kẻo nguội. Thật nhẹ nhõm!',
-    category: 'Gia đình' as const,
-    author: 'Tuệ Mẫn',
-    authorType: 'user' as const,
-    avatarSeed: 'man_tue',
-    empathyCount: 135,
-    meTooCount: 64,
-    hoursAgo: 5,
-    comments: [
-      {
-        author: 'Gia Huy',
-        authorType: 'user' as const,
-        avatarSeed: 'huy_gia',
-        content: 'Cậu tuyệt vời và ấm áp quá! Học hỏi cậu!',
-        minutesAgo: 70
-      }
-    ]
-  },
-  {
-    title: 'Bí kíp nhỏ cho bạn nào đang bị mất tập trung khi ôn thi',
-    content: 'Mỗi lần học bài, mình để điện thoại ở phòng khác và dùng đồng hồ đếm ngược 25 phút (phương pháp Pomodoro). Học hết 25 phút thì đứng dậy vươn vai, uống nước 5 phút. Nhờ vậy mà tuần này mình giải xong hết 3 đề Hóa mà không bị mỏi mắt hay lướt TikTok vô thức nữa!',
-    category: 'Học tập' as const,
-    author: 'Quốc Việt',
-    authorType: 'user' as const,
-    avatarSeed: 'viet_quoc',
-    empathyCount: 118,
-    meTooCount: 92,
-    hoursAgo: 14,
-    comments: [
-      {
-        author: 'Bích Trâm',
-        authorType: 'user' as const,
-        avatarSeed: 'tram_bich',
-        content: 'Cảm ơn bạn nhiều nha! Mình áp dụng ngay tối nay luôn.',
-        minutesAgo: 240
-      }
-    ]
-  },
-  {
-    title: 'Mình học cách chấp nhận rằng mình không thể làm vừa lòng tất cả',
-    content: 'Trước đây ai nhờ gì mình cũng nhận, ai nói gì mình cũng gật đầu vì sợ bị ghét. Kết quả là mình kiệt sức và luôn trong trạng thái lo âu. Tháng này mình bắt đầu từ chối những lời rủ rê mà mình không thích. Hóa ra trời không sập xuống, mà mình lại có thêm thời gian đọc cuốn sách mình yêu thích.',
-    category: 'Bản thân' as const,
-    author: 'Ngọc Lan',
-    authorType: 'user' as const,
-    avatarSeed: 'lan_ngoc',
-    empathyCount: 142,
-    meTooCount: 120,
-    hoursAgo: 28, // yesterday
-    comments: []
-  },
-  {
-    title: 'Lời nhắn gửi đến những bạn đang chuẩn bị bước vào kỳ thi học sinh giỏi',
-    content: 'Biết là các bạn đang phải ôn luyện ngày đêm vất vả lắm. Đừng quên ăn uống đủ bữa và ngủ ít nhất 6 tiếng nhé. Kết quả thế nào thì sự kiên trì của các bạn trong những tháng ngày qua đã là một chiến thắng vẻ vang rồi. Tự hào về các bạn!',
-    category: 'Học tập' as const,
-    author: 'Thầy chủ nhiệm 10A1',
-    authorType: 'user' as const,
-    avatarSeed: 'thay_hung',
-    empathyCount: 198,
-    meTooCount: 140,
-    hoursAgo: 52, // 2 days ago
-    comments: []
-  }
-];
+// No fake user posts - real user posts only come from actual database submissions
+export const INITIAL_USER_COMMUNITY_POSTS: any[] = [];
 
 /**
  * Builds dynamic confessions data with real timestamps calculated relative to now.
@@ -302,6 +241,8 @@ export function buildDynamicConfessions(
     const postTime = new Date(nowMs - (i * 2 + 1.5) * 60 * 60 * 1000);
     result.push({
       id: `ai-conf-${dateStr}-${i}`,
+      userId: null,
+      source: 'ai',
       title: item.title,
       content: item.content,
       category: item.category,
@@ -316,8 +257,10 @@ export function buildDynamicConfessions(
       dateKey: dateStr,
       comments: item.comments.map((c, ci) => ({
         id: `comm-ai-${dateStr}-${i}-${ci}`,
+        userId: null,
         author: c.author,
         authorType: c.authorType,
+        source: 'ai',
         avatarSeed: c.avatarSeed,
         content: c.content,
         createdAt: new Date(postTime.getTime() + (c.minutesAgo * 60 * 1000)).toISOString(),
@@ -326,36 +269,7 @@ export function buildDynamicConfessions(
     });
   });
 
-  // 2. Real User Community Posts with real past timestamps
-  INITIAL_USER_COMMUNITY_POSTS.forEach((item, i) => {
-    const postTime = new Date(nowMs - (item.hoursAgo * 60 * 60 * 1000));
-    result.push({
-      id: `user-conf-init-${i}`,
-      title: item.title,
-      content: item.content,
-      category: item.category,
-      author: item.author,
-      authorType: 'user',
-      avatarSeed: item.avatarSeed,
-      isAnonymous: false,
-      createdAt: postTime.toISOString(),
-      updatedAt: postTime.toISOString(),
-      empathyCount: item.empathyCount,
-      meTooCount: item.meTooCount,
-      dateKey: postTime.toISOString().split('T')[0],
-      comments: item.comments.map((c, ci) => ({
-        id: `comm-user-${i}-${ci}`,
-        author: c.author,
-        authorType: c.authorType,
-        avatarSeed: c.avatarSeed,
-        content: c.content,
-        createdAt: new Date(postTime.getTime() + (c.minutesAgo * 60 * 1000)).toISOString(),
-        likes: 4
-      }))
-    });
-  });
-
-  // 3. Add past day AI post for realistic timeline flow
+  // 2. Add past day AI post for realistic timeline flow
   const prevBatchIdx = (batchIdx + AI_DAILY_BATCHES.length - 1) % AI_DAILY_BATCHES.length;
   const prevBatch = AI_DAILY_BATCHES[prevBatchIdx];
   const yesterdayPost = prevBatch[0];
@@ -363,6 +277,8 @@ export function buildDynamicConfessions(
     const yestTime = new Date(nowMs - 26 * 60 * 60 * 1000); // 26 hours ago = yesterday
     result.push({
       id: `ai-conf-past-${prevBatchIdx}`,
+      userId: null,
+      source: 'ai',
       title: yesterdayPost.title,
       content: yesterdayPost.content,
       category: yesterdayPost.category,

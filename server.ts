@@ -1547,34 +1547,94 @@ app.get('/api/confessions', (req, res) => {
 
 app.post('/api/confessions', (req, res) => {
   try {
-    const { title, content, category, isAnonymous } = req.body;
-    if (!title || !content) {
+    const { title, content, category, isAnonymous, authorNickname } = req.body;
+    if (!title || !title.trim() || !content || !content.trim()) {
       return res.status(400).json({ success: false, error: 'Tiêu đề và nội dung không được để trống.' });
     }
     let author = 'Người bạn nhỏ';
     let avatarSeed = 'guest_avatar_' + Math.floor(Math.random() * 1000);
     let authorType: 'user' | 'ai' = 'user';
+    let userId: string | null = null;
+
     const authHeader = req.headers.authorization;
     if (authHeader) {
       const user = db.getUserByToken(authHeader);
       if (user) {
-        author = user.nickname;
-        avatarSeed = user.avatar;
+        userId = user.id;
+        avatarSeed = user.avatar || avatarSeed;
+        if (isAnonymous) {
+          author = authorNickname?.trim() || 'Bạn nhỏ ẩn danh';
+        } else {
+          author = user.nickname?.trim() || authorNickname?.trim() || 'Thành viên';
+        }
+      } else {
+        author = isAnonymous ? (authorNickname?.trim() || 'Bạn nhỏ ẩn danh') : (authorNickname?.trim() || 'Người bạn nhỏ');
       }
+    } else {
+      author = isAnonymous ? (authorNickname?.trim() || 'Bạn nhỏ ẩn danh') : (authorNickname?.trim() || 'Người bạn nhỏ');
     }
+
     const record = db.createConfession({
-      title,
-      content,
-      category,
+      userId,
+      source: 'user',
+      title: title.trim(),
+      content: content.trim(),
+      category: category || 'Khác',
       author,
       avatarSeed,
       isAnonymous: !!isAnonymous,
       authorType
     });
-    res.json({ success: true, confession: record });
+
+    const clientConfession = {
+      id: record.id,
+      userId: record.user_id,
+      source: record.source,
+      title: record.title,
+      content: record.content,
+      category: record.category,
+      author: record.author,
+      authorType: record.author_type,
+      avatarSeed: record.avatar_seed,
+      isAnonymous: record.is_anonymous,
+      createdAt: record.created_at,
+      updatedAt: record.updated_at,
+      visibility: record.visibility,
+      status: record.status,
+      empathyCount: record.empathy_count,
+      meTooCount: record.me_too_count,
+      comments: [],
+      userReacted: userId ? { empathy: true } : {},
+      isBookmarked: false
+    };
+
+    res.json({ success: true, confession: clientConfession });
   } catch (error) {
     console.error('Error creating confession:', error);
     res.status(500).json({ success: false, error: 'Lỗi đăng bài.' });
+  }
+});
+
+app.delete('/api/confessions/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      return res.status(401).json({ success: false, error: 'Bạn cần đăng nhập để xóa bài viết.' });
+    }
+    const user = db.getUserByToken(authHeader);
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Phiên đăng nhập không hợp lệ.' });
+    }
+    const isAdmin = Boolean((user as any).role === 'admin');
+    const result = db.deleteConfession(id, user.id, isAdmin);
+    if (!result.success) {
+      return res.status(403).json(result);
+    }
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting confession:', error);
+    res.status(500).json({ success: false, error: 'Lỗi xóa bài viết.' });
   }
 });
 
@@ -1606,20 +1666,41 @@ app.post('/api/confessions/:id/comments', (req, res) => {
     let author = 'Người bạn nhỏ';
     let avatarSeed = 'commenter_' + Math.floor(Math.random() * 1000);
     let authorType: 'user' | 'ai' = 'user';
+    let userId: string | null = null;
     const authHeader = req.headers.authorization;
     if (authHeader) {
       const user = db.getUserByToken(authHeader);
       if (user) {
-        author = user.nickname;
-        avatarSeed = user.avatar;
+        userId = user.id;
+        author = user.nickname?.trim() || 'Thành viên';
+        avatarSeed = user.avatar || avatarSeed;
       }
     }
     const result = db.addConfessionComment(id, {
+      userId,
       author,
       avatarSeed,
-      content,
-      authorType
+      content: content.trim(),
+      authorType,
+      source: 'user'
     });
+    if (result.success && result.comment) {
+      return res.json({
+        success: true,
+        comment: {
+          id: result.comment.id,
+          userId: result.comment.user_id,
+          author: result.comment.author,
+          authorType: result.comment.author_type,
+          source: result.comment.source,
+          avatarSeed: result.comment.avatar_seed,
+          content: result.comment.content,
+          createdAt: result.comment.created_at,
+          timestamp: 'Vừa xong',
+          likes: result.comment.likes || 0
+        }
+      });
+    }
     res.json(result);
   } catch (error) {
     console.error('Error commenting confession:', error);

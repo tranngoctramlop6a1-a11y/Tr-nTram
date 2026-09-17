@@ -21,7 +21,10 @@ import {
   User,
   AlertTriangle,
   X,
-  CheckCircle2
+  CheckCircle2,
+  Trash2,
+  RefreshCw,
+  Loader2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -30,7 +33,11 @@ interface ConfessionsViewProps {
   onOpenCreateModal: () => void;
   onReact: (id: string, type: 'empathy' | 'meToo') => void;
   onAddComment: (confessionId: string, comment: Comment) => void;
+  onDeleteConfession?: (id: string) => void;
   currentUserId?: string;
+  currentUserRole?: string;
+  isLoading?: boolean;
+  onRefresh?: () => void;
 }
 
 export const ConfessionsView: React.FC<ConfessionsViewProps> = ({
@@ -38,7 +45,11 @@ export const ConfessionsView: React.FC<ConfessionsViewProps> = ({
   onOpenCreateModal,
   onReact,
   onAddComment,
-  currentUserId
+  onDeleteConfession,
+  currentUserId,
+  currentUserRole,
+  isLoading,
+  onRefresh
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('Tất cả');
   const [searchQuery, setSearchQuery] = useState('');
@@ -46,6 +57,7 @@ export const ConfessionsView: React.FC<ConfessionsViewProps> = ({
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
   const [newCommentText, setNewCommentText] = useState<Record<string, string>>({});
   const [commentError, setCommentError] = useState<Record<string, string | null>>({});
+  const [isSubmittingComment, setIsSubmittingComment] = useState<Record<string, boolean>>({});
 
   // Bookmarks
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(() => {
@@ -58,7 +70,9 @@ export const ConfessionsView: React.FC<ConfessionsViewProps> = ({
   const [reportReason, setReportReason] = useState('Nội dung tiêu cực hoặc không phù hợp');
   const [reportSuccessMsg, setReportSuccessMsg] = useState<string | null>(null);
 
-  const categories = ['Tất cả', 'Gia đình', 'Học tập', 'Tình bạn', 'Bản thân', 'Trường học', 'Tình cảm', 'Khác'];
+  const categories = currentUserId
+    ? ['Tất cả', 'Của tôi', 'Gia đình', 'Học tập', 'Tình bạn', 'Bản thân', 'Trường học', 'Tình cảm', 'Khác']
+    : ['Tất cả', 'Gia đình', 'Học tập', 'Tình bạn', 'Bản thân', 'Trường học', 'Tình cảm', 'Khác'];
 
   // Keep bookmarks in sync when user progress updates
   useEffect(() => {
@@ -114,8 +128,36 @@ export const ConfessionsView: React.FC<ConfessionsViewProps> = ({
     }, 2500);
   };
 
+  const handleDeletePost = async (id: string) => {
+    if (!window.confirm('Bạn có chắc chắn muốn xóa bài viết tâm sự này không? Hành động này không thể hoàn tác.')) {
+      return;
+    }
+    try {
+      const token = localStorage.getItem('teen_mind_auth_token') || sessionStorage.getItem('teen_mind_auth_token');
+      const res = await fetch(`/api/confessions/${id}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      const data = await res.json();
+      if (data && data.success) {
+        if (onDeleteConfession) onDeleteConfession(id);
+      } else {
+        alert(data.error || 'Không thể xóa bài viết. Bạn chỉ có thể xóa bài viết của chính mình.');
+      }
+    } catch (err) {
+      console.error('Error deleting confession:', err);
+      alert('Đã xảy ra lỗi khi kết nối với máy chủ.');
+    }
+  };
+
   const filteredConfessions = confessions.filter((conf) => {
-    const matchCat = selectedCategory === 'Tất cả' || conf.category === selectedCategory;
+    let matchCat = true;
+    if (selectedCategory === 'Của tôi') {
+      matchCat = Boolean(currentUserId && conf.userId === currentUserId);
+    } else if (selectedCategory !== 'Tất cả') {
+      matchCat = conf.category === selectedCategory;
+    }
+
     const matchSearch = conf.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
                         conf.content.toLowerCase().includes(searchQuery.toLowerCase());
     const matchBookmark = sortBy !== 'bookmarked' || bookmarkedIds.has(conf.id);
@@ -137,9 +179,9 @@ export const ConfessionsView: React.FC<ConfessionsViewProps> = ({
     setExpandedComments((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const handlePostComment = (confessionId: string) => {
+  const handlePostComment = async (confessionId: string) => {
     const text = (newCommentText[confessionId] || '').trim();
-    if (!text) return;
+    if (!text || isSubmittingComment[confessionId]) return;
 
     // Moderation check on comment
     const modResult = checkContentModeration(text);
@@ -151,43 +193,57 @@ export const ConfessionsView: React.FC<ConfessionsViewProps> = ({
       return;
     }
 
-    const now = new Date().toISOString();
-    const comment: Comment = {
-      id: `c-${Date.now()}`,
-      author: getRandomNickname(),
-      authorType: 'user',
-      avatarSeed: 'seed-' + Math.floor(Math.random() * 50),
-      content: text,
-      createdAt: now,
-      timestamp: 'Vừa xong',
-      likes: 1
-    };
+    try {
+      setIsSubmittingComment((prev) => ({ ...prev, [confessionId]: true }));
+      const token = localStorage.getItem('teen_mind_auth_token') || sessionStorage.getItem('teen_mind_auth_token');
+      
+      const res = await fetch(`/api/confessions/${confessionId}/comments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          content: text
+        })
+      });
 
-    onAddComment(confessionId, comment);
-    setNewCommentText((prev) => ({ ...prev, [confessionId]: '' }));
-    setCommentError((prev) => ({ ...prev, [confessionId]: null }));
-    
-    // Auto-open comments
-    setExpandedComments((prev) => ({ ...prev, [confessionId]: true }));
+      const data = await res.json();
+      if (data && data.success && data.comment) {
+        onAddComment(confessionId, data.comment);
+      } else {
+        const now = new Date().toISOString();
+        const fallbackComment: Comment = {
+          id: `c-${Date.now()}`,
+          author: 'Người bạn nhỏ',
+          authorType: 'user',
+          avatarSeed: 'seed-' + Math.floor(Math.random() * 50),
+          content: text,
+          createdAt: now,
+          timestamp: 'Vừa xong',
+          likes: 1
+        };
+        onAddComment(confessionId, fallbackComment);
+      }
 
-    // Sync comment to server API
-    const token = localStorage.getItem('teen_mind_auth_token') || sessionStorage.getItem('teen_mind_auth_token');
-    fetch(`/api/confessions/${confessionId}/comments`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {})
-      },
-      body: JSON.stringify({
-        content: text
-      })
-    }).catch(() => {});
+      setNewCommentText((prev) => ({ ...prev, [confessionId]: '' }));
+      setCommentError((prev) => ({ ...prev, [confessionId]: null }));
+      setExpandedComments((prev) => ({ ...prev, [confessionId]: true }));
 
-    confetti({
-      particleCount: 20,
-      spread: 50,
-      origin: { y: 0.7 }
-    });
+      confetti({
+        particleCount: 20,
+        spread: 50,
+        origin: { y: 0.7 }
+      });
+    } catch (err) {
+      console.error('Error posting comment:', err);
+      setCommentError((prev) => ({
+        ...prev,
+        [confessionId]: 'Không thể gửi bình luận lúc này. Vui lòng thử lại.'
+      }));
+    } finally {
+      setIsSubmittingComment((prev) => ({ ...prev, [confessionId]: false }));
+    }
   };
 
   return (
@@ -246,6 +302,19 @@ export const ConfessionsView: React.FC<ConfessionsViewProps> = ({
               <option value="most_empathy">Nhiều đồng cảm nhất</option>
               <option value="bookmarked">Bài viết đã lưu ({bookmarkedIds.size})</option>
             </select>
+
+            {onRefresh && (
+              <button
+                type="button"
+                onClick={onRefresh}
+                title="Làm mới bài viết từ máy chủ"
+                className={`p-2 rounded-xl border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors cursor-pointer ${
+                  isLoading ? 'animate-spin text-rose-500' : ''
+                }`}
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -269,7 +338,12 @@ export const ConfessionsView: React.FC<ConfessionsViewProps> = ({
       </div>
 
       {/* Confessions List */}
-      {filteredConfessions.length === 0 ? (
+      {isLoading && filteredConfessions.length === 0 ? (
+        <div className="text-center py-16 bg-white rounded-3xl border border-slate-100 p-8 space-y-3">
+          <Loader2 className="w-6 h-6 text-rose-500 animate-spin mx-auto" />
+          <p className="text-sm font-semibold text-slate-700">Đang tải danh sách bài tâm sự từ hệ thống...</p>
+        </div>
+      ) : filteredConfessions.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-3xl border border-dashed border-slate-200 p-8">
           <p className="text-base font-bold text-slate-700">Chưa tìm thấy câu chuyện nào phù hợp.</p>
           <p className="text-xs text-slate-600 mt-1">
@@ -343,6 +417,17 @@ export const ConfessionsView: React.FC<ConfessionsViewProps> = ({
                     <span className="px-3 py-1 rounded-full bg-rose-50 text-rose-700 text-xs font-bold border border-rose-100 shrink-0">
                       {conf.category}
                     </span>
+
+                    {/* Delete button for author or admin */}
+                    {((Boolean(currentUserId) && conf.userId === currentUserId) || currentUserRole === 'admin') && (
+                      <button
+                        onClick={() => handleDeletePost(conf.id)}
+                        className="p-1.5 rounded-xl border border-rose-200 text-rose-500 hover:bg-rose-50 hover:text-rose-700 transition-colors cursor-pointer"
+                        title="Xóa bài viết của bạn"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
 
                     {/* Bookmark Button */}
                     <button
@@ -492,9 +577,14 @@ export const ConfessionsView: React.FC<ConfessionsViewProps> = ({
                       />
                       <button
                         onClick={() => handlePostComment(conf.id)}
-                        className="px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shrink-0"
+                        disabled={isSubmittingComment[conf.id]}
+                        className="px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shrink-0"
                       >
-                        <Send className="w-3.5 h-3.5" />
+                        {isSubmittingComment[conf.id] ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Send className="w-3.5 h-3.5" />
+                        )}
                         <span>Gửi</span>
                       </button>
                     </div>

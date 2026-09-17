@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Confession } from '../types';
 import { checkContentModeration, getRandomNickname } from '../utils/moderation';
+import { useAuth } from '../context/AuthContext';
 import { 
   X, 
   Send, 
@@ -9,7 +10,8 @@ import {
   AlertCircle, 
   HeartHandshake, 
   Sparkles,
-  Lock
+  Lock,
+  Loader2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -26,6 +28,8 @@ export const CreateConfessionModal: React.FC<CreateConfessionModalProps> = ({
   onAddConfession,
   onGoToHelp
 }) => {
+  const { user } = useAuth();
+  const isAuthenticated = Boolean(user);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [category, setCategory] = useState<Confession['category']>('Gia đình');
@@ -33,6 +37,18 @@ export const CreateConfessionModal: React.FC<CreateConfessionModalProps> = ({
   const [isAnonymous, setIsAnonymous] = useState(true);
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
   const [isEmergency, setIsEmergency] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Sync nickname with user status when opened or toggle changes
+  useEffect(() => {
+    if (isOpen) {
+      if (!isAnonymous && isAuthenticated && user?.nickname) {
+        setAuthorNickname(user.nickname);
+      } else if (isAnonymous) {
+        setAuthorNickname(getRandomNickname());
+      }
+    }
+  }, [isOpen, isAnonymous, isAuthenticated, user?.nickname]);
 
   if (!isOpen) return null;
 
@@ -40,8 +56,10 @@ export const CreateConfessionModal: React.FC<CreateConfessionModalProps> = ({
     setAuthorNickname(getRandomNickname());
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     setWarningMessage(null);
     setIsEmergency(false);
 
@@ -55,59 +73,58 @@ export const CreateConfessionModal: React.FC<CreateConfessionModalProps> = ({
     if (modResult.isEmergency) {
       setIsEmergency(true);
       setWarningMessage(modResult.warning || null);
-      // Still allow submission or guide to support
     } else if (!modResult.isSafe) {
       setWarningMessage(modResult.warning || 'Nội dung chưa phù hợp với nguyên tắc cộng đồng.');
       return;
     }
 
-    const now = new Date().toISOString();
-    const newConf: Confession = {
-      id: `conf-${Date.now()}`,
-      title: title.trim(),
-      content: content.trim(),
-      category,
-      author: isAnonymous ? authorNickname : (authorNickname || 'Bạn nhỏ ẩn danh'),
-      authorType: 'user',
-      avatarSeed: 'seed-' + Math.floor(Math.random() * 100),
-      isAnonymous,
-      createdAt: now,
-      timestamp: 'Vừa xong',
-      empathyCount: 1,
-      meTooCount: 0,
-      comments: []
-    };
+    try {
+      setIsSubmitting(true);
+      const token = localStorage.getItem('teen_mind_auth_token') || sessionStorage.getItem('teen_mind_auth_token');
+      
+      const response = await fetch('/api/confessions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          title: title.trim(),
+          content: content.trim(),
+          category,
+          isAnonymous,
+          authorNickname: authorNickname.trim()
+        })
+      });
 
-    // Asynchronously sync with server API
-    const token = localStorage.getItem('teen_mind_auth_token') || sessionStorage.getItem('teen_mind_auth_token');
-    fetch('/api/confessions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {})
-      },
-      body: JSON.stringify({
-        title: newConf.title,
-        content: newConf.content,
-        category: newConf.category,
-        isAnonymous: newConf.isAnonymous
-      })
-    }).catch(() => {});
+      const data = await response.json();
+      if (!response.ok || !data.success || !data.confession) {
+        setWarningMessage(data.error || 'Có lỗi xảy ra khi lưu bài viết vào hệ thống. Vui lòng thử lại.');
+        setIsSubmitting(false);
+        return;
+      }
 
-    onAddConfession(newConf);
+      // Add the real saved confession returned by the server
+      onAddConfession(data.confession);
 
-    confetti({
-      particleCount: 50,
-      spread: 70,
-      origin: { y: 0.6 }
-    });
+      confetti({
+        particleCount: 50,
+        spread: 70,
+        origin: { y: 0.6 }
+      });
 
-    // Reset & close
-    setTitle('');
-    setContent('');
-    setWarningMessage(null);
-    setIsEmergency(false);
-    onClose();
+      // Reset & close
+      setTitle('');
+      setContent('');
+      setWarningMessage(null);
+      setIsEmergency(false);
+      setIsSubmitting(false);
+      onClose();
+    } catch (err) {
+      console.error('Lỗi khi gửi confession:', err);
+      setWarningMessage('Không thể kết nối đến máy chủ. Vui lòng kiểm tra lại mạng.');
+      setIsSubmitting(false);
+    }
   };
 
   const categories: Confession['category'][] = [
@@ -285,10 +302,20 @@ export const CreateConfessionModal: React.FC<CreateConfessionModalProps> = ({
             </button>
             <button
               type="submit"
-              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-600 hover:to-amber-600 text-white font-bold text-sm shadow-sm flex items-center gap-2 cursor-pointer transform active:scale-95"
+              disabled={isSubmitting}
+              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-600 hover:to-amber-600 text-white font-bold text-sm shadow-sm flex items-center gap-2 cursor-pointer transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Send className="w-4 h-4" />
-              <span>Gửi tâm sự an toàn</span>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Đang lưu vào hệ thống...</span>
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4" />
+                  <span>Gửi tâm sự an toàn</span>
+                </>
+              )}
             </button>
           </div>
 

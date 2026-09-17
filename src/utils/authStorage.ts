@@ -91,7 +91,7 @@ export function saveStoredAccountCredential(
   const updated: StoredAccountCredential = {
     email: clean,
     password: password.trim(),
-    nickname: extra?.nickname || existing?.nickname || clean.split('@')[0] || 'Bạn nhỏ',
+    nickname: extra?.nickname !== undefined ? extra.nickname : (existing?.nickname || ''),
     avatar: extra?.avatar || existing?.avatar || '🌱',
     id: extra?.id || existing?.id,
     createdAt: existing?.createdAt || now,

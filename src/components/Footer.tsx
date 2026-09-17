@@ -197,7 +197,7 @@ export const Footer: React.FC<FooterProps> = ({ onSelectTab }) => {
             <div className="pt-2">
               <div id="footer-credits-box" className="p-3 rounded-xl bg-rose-50 border border-rose-100 text-[11px] text-rose-800 space-y-1">
                 <span id="footer-credits-title" className="font-bold block">Ý tưởng của:</span>
-                <span id="footer-credits-authors" className="block font-medium text-slate-700">Ngọc Trâm, Phương Nhi, Đức Thảo</span>
+                <span id="footer-credits-authors" className="block font-medium text-slate-700">Đội ngũ Học sinh Dự án Safe Space</span>
               </div>
             </div>
           </div>

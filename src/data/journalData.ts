@@ -208,12 +208,18 @@ export const SAMPLE_JOURNAL_ENTRIES: JournalEntry[] = [];
 
 export const SAMPLE_TIME_CAPSULES: TimeCapsule[] = [];
 
-const JOURNAL_DRAFTS_STORAGE_KEY = 'teen_journal_drafts';
+export function getDraftStorageKey(userId?: string): string | null {
+  if (!userId || userId === 'guest') return null;
+  return `teen_journal_${userId}_drafts`;
+}
 
-// Draft persistence helpers
-export function getJournalDraft(dateStr: string): JournalDraft | null {
+// Draft persistence helpers - only stored in localStorage for authenticated accounts
+export function getJournalDraft(dateStr: string, userId?: string): JournalDraft | null {
+  const key = getDraftStorageKey(userId);
+  if (!key) return null; // Guest mode never reads from localStorage drafts
+
   try {
-    const raw = localStorage.getItem(JOURNAL_DRAFTS_STORAGE_KEY);
+    const raw = localStorage.getItem(key);
     if (!raw) return null;
     const map = JSON.parse(raw);
     return map[dateStr] || null;
@@ -222,9 +228,15 @@ export function getJournalDraft(dateStr: string): JournalDraft | null {
   }
 }
 
-export function saveJournalDraft(dateStr: string, draft: Partial<JournalDraft>): void {
+export function saveJournalDraft(dateStr: string, draft: Partial<JournalDraft>, userId?: string): void {
+  const key = getDraftStorageKey(userId);
+  if (!key) {
+    // STRICT GUEST MODE: In guest mode, do NOT write drafts to localStorage!
+    return;
+  }
+
   try {
-    const raw = localStorage.getItem(JOURNAL_DRAFTS_STORAGE_KEY);
+    const raw = localStorage.getItem(key);
     const map = raw ? JSON.parse(raw) : {};
     const existing = map[dateStr] || {};
     map[dateStr] = {
@@ -232,22 +244,26 @@ export function saveJournalDraft(dateStr: string, draft: Partial<JournalDraft>):
       ...draft,
       updatedAt: new Date().toISOString()
     };
-    localStorage.setItem(JOURNAL_DRAFTS_STORAGE_KEY, JSON.stringify(map));
+    localStorage.setItem(key, JSON.stringify(map));
   } catch {}
 }
 
-export function clearJournalDraft(dateStr: string): void {
+export function clearJournalDraft(dateStr: string, userId?: string): void {
+  const key = getDraftStorageKey(userId);
+  if (!key) return;
+
   try {
-    const raw = localStorage.getItem(JOURNAL_DRAFTS_STORAGE_KEY);
+    const raw = localStorage.getItem(key);
     if (!raw) return;
     const map = JSON.parse(raw);
     delete map[dateStr];
-    localStorage.setItem(JOURNAL_DRAFTS_STORAGE_KEY, JSON.stringify(map));
+    localStorage.setItem(key, JSON.stringify(map));
   } catch {}
 }
 
-export function hasJournalDraft(dateStr: string): boolean {
-  const draft = getJournalDraft(dateStr);
+export function hasJournalDraft(dateStr: string, userId?: string): boolean {
+  if (!userId || userId === 'guest') return false;
+  const draft = getJournalDraft(dateStr, userId);
   return !!draft && (
     !!draft.content?.trim() || 
     !!draft.title?.trim() || 

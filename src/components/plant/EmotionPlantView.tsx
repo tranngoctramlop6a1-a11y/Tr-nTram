@@ -111,8 +111,30 @@ export const EmotionPlantView: React.FC = () => {
 
   // Load state helper
   const loadState = useCallback(() => {
+    // STRICT GUEST ISOLATION: In guest mode, NEVER read from localStorage
+    if (!user || !user.id || user.id === 'guest') {
+      setSeeds([]);
+      setCurrentWeather(getBaseWeatherForDate(todayStr));
+      setTodayEmotion(undefined);
+      setTodayFertilizer({
+        date: todayStr,
+        requiredKg: getRequiredFertilizerForDate(todayStr),
+        currentKg: 0,
+        isCompleted: false
+      });
+      setDailyLogs({});
+      setUnlockedDecorations([]);
+      setActiveDecorations([]);
+      setRewards([]);
+      setRewardHistory([]);
+      setHasPendingGift(false);
+      setLastVisitedDate(null);
+      setPlantSpeech(getDailyPlantGreeting(true));
+      return;
+    }
+
     try {
-      const storageKey = getPlantStorageKey(user?.id);
+      const storageKey = getPlantStorageKey(user.id);
       const local = localStorage.getItem(storageKey);
 
       if (local) {
@@ -152,7 +174,7 @@ export const EmotionPlantView: React.FC = () => {
       }
 
       // Check legacy seeds key for migration
-      const legacyKey = getLegacyPlantStorageKey(user?.id);
+      const legacyKey = getLegacyPlantStorageKey(user.id);
       const legacyLocal = localStorage.getItem(legacyKey);
       if (legacyLocal) {
         const legacySeeds = JSON.parse(legacyLocal);
@@ -183,7 +205,7 @@ export const EmotionPlantView: React.FC = () => {
 
   // Fetch from server if logged in
   useEffect(() => {
-    if (!token || !user?.id) return;
+    if (!token || !user?.id || user.id === 'guest') return;
     let isMounted = true;
 
     const fetchServerData = async () => {
@@ -244,14 +266,20 @@ export const EmotionPlantView: React.FC = () => {
         ...override
       };
 
-      const storageKey = getPlantStorageKey(user?.id);
+      // STRICT GUEST CHECK: In Guest Mode, do NOT save to localStorage!
+      // In-memory state allows the plant to interact during this session, but on F5 it resets cleanly.
+      if (!user?.id || user.id === 'guest') {
+        return;
+      }
+
+      const storageKey = getPlantStorageKey(user.id);
       try {
         localStorage.setItem(storageKey, JSON.stringify(currentState));
       } catch (e) {
         console.warn('Failed to save state to localStorage:', e);
       }
 
-      if (token) {
+      if (token && user.id !== 'guest') {
         try {
           await fetch('/api/emotion-plant/sync', {
             method: 'POST',
@@ -649,15 +677,26 @@ export const EmotionPlantView: React.FC = () => {
               <span>Đã gieo ({seeds.length})</span>
             </button>
 
-            {user && (
+            {user && user.id !== 'guest' ? (
               <span className="hidden md:inline-flex items-center gap-1 text-[11px] text-teal-800 bg-teal-50 px-2.5 py-1 rounded-full border border-teal-200/60 font-semibold">
                 <CloudCheck className="w-3.5 h-3.5 text-teal-600" />
                 <span>Đồng bộ tài khoản</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[11px] text-amber-800 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200/60 font-semibold">
+                <span>🍃 Chế độ khách (tạm thời)</span>
               </span>
             )}
           </div>
         </div>
       </div>
+
+      {/* Guest Mode Notice Banner */}
+      {(!user || !user.id || user.id === 'guest') && (
+        <div className="bg-[#FFF8EE] border-b border-[#F0DFCD] text-[#7A4B2A] py-2 px-4 sm:px-6 text-xs text-center shadow-2xs">
+          <span className="font-serif font-bold text-[#5A351D]">Chế độ khách:</span> Cây cảm xúc và hoa trái lớn lên trong phiên này và sẽ tự làm mới sạch sẽ khi tải lại trang (F5). Hãy đăng nhập để lưu trữ hành trình chăm cây bền lâu nhé! 🌱
+        </div>
+      )}
 
       {/* ════════════════ TITLE & GENTLE INTRO ════════════════ */}
       <header className="pt-6 sm:pt-10 pb-4 px-4 sm:px-6 max-w-4xl mx-auto text-center space-y-2.5">

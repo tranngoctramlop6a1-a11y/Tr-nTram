@@ -3,6 +3,7 @@ import { JournalEntry } from '../../types';
 import { ChevronLeft, ChevronRight, Sparkles, Lock } from 'lucide-react';
 import { hasJournalDraft, getJournalCalendarSubtitle } from '../../data/journalData';
 import { isJournalLocked } from '../../utils/journalTimeLock';
+import { useAuth } from '../../context/AuthContext';
 
 interface JournalCalendarProps {
   currentMonth: Date;
@@ -21,6 +22,7 @@ export const JournalCalendar: React.FC<JournalCalendarProps> = ({
   onSelectDate,
   onOpenToday
 }) => {
+  const { user } = useAuth();
   const year = currentMonth.getFullYear();
   const month = currentMonth.getMonth(); // 0 - 11
 
@@ -145,7 +147,7 @@ export const JournalCalendar: React.FC<JournalCalendarProps> = ({
           const dateStr = formatDateString(year, month, dayNumber);
           const entry = entryMap.get(dateStr);
           const isLocked = entry ? isJournalLocked(entry) : false;
-          const hasDraft = !entry && hasJournalDraft(dateStr);
+          const hasDraft = !entry && hasJournalDraft(dateStr, user?.id);
           const hasFutureMessage = !!(entry?.unlockDate || entry?.readLaterDate);
           const isSelected = selectedDate === dateStr;
           const isToday = today === dateStr;

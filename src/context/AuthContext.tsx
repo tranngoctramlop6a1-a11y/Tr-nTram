@@ -189,7 +189,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const userData: AuthUser = {
       id: serverUser.id,
       email: cleanEmail,
-      nickname: serverUser.nickname || cleanEmail.split('@')[0] || 'Bạn nhỏ',
+      nickname: serverUser.nickname || '',
       avatar: serverUser.avatar || '🌱',
       has_password: Boolean(serverUser.has_password),
       created_at: serverUser.created_at || new Date().toISOString(),
@@ -277,7 +277,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       let serverUser: any = {
         id,
         email: cleanEmail,
-        nickname: name || cleanEmail.split('@')[0],
+        nickname: name || '',
         avatar: picture,
         has_password: true,
         created_at: new Date().toISOString()
@@ -290,7 +290,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           body: JSON.stringify({
             email: cleanEmail,
             password: trimmedPassword,
-            suggestedNickname: name || cleanEmail.split('@')[0],
+            suggestedNickname: name || '',
             suggestedAvatar: picture
           })
         });
@@ -385,7 +385,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       saveStoredAccountCredential(cleanEmail, trimmedPassword, {
-        nickname: data.user?.nickname || nickname,
+        nickname: data.user?.nickname || nickname?.trim() || '',
         avatar: data.user?.avatar,
         id: data.user?.id
       });

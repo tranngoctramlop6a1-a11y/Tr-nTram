@@ -54,47 +54,43 @@ function AppContent() {
   } | null>(null);
   const [journalPromptNote, setJournalPromptNote] = useState<string | undefined>(undefined);
 
-  const [confessions, setConfessions] = useState<Confession[]>(() => {
-    try {
-      const stored = localStorage.getItem('teen_confessions_list');
-      const parsed = stored ? JSON.parse(stored) : [];
-      return buildDynamicConfessions(new Date(), parsed);
-    } catch {
-      return buildDynamicConfessions(new Date(), []);
-    }
-  });
-
+  const [confessions, setConfessions] = useState<Confession[]>([]);
+  const [isConfessionsLoading, setIsConfessionsLoading] = useState(true);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
-  // Sync fresh confessions from server
-  useEffect(() => {
-    fetch('/api/confessions')
-      .then(r => r.json())
-      .then(data => {
-        if (data && data.success && Array.isArray(data.confessions) && data.confessions.length > 0) {
-          setConfessions(prev => {
-            const map = new Map<string, Confession>();
-            data.confessions.forEach((c: Confession) => map.set(c.id, c));
-            prev.forEach(c => {
-              if (!map.has(c.id)) map.set(c.id, c);
-            });
-            return Array.from(map.values()).sort(
-              (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
-            );
-          });
-        }
-      })
-      .catch(() => {});
+  const fetchConfessions = React.useCallback(async () => {
+    try {
+      setIsConfessionsLoading(true);
+      const token = localStorage.getItem('teen_mind_auth_token') || sessionStorage.getItem('teen_mind_auth_token');
+      const res = await fetch('/api/confessions', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.confessions)) {
+        setConfessions(data.confessions);
+      }
+    } catch (err) {
+      console.error('Error fetching confessions from server:', err);
+    } finally {
+      setIsConfessionsLoading(false);
+    }
   }, []);
 
-  // Sync confessions to localStorage
+  // Fetch confessions on mount and whenever the active user changes
   useEffect(() => {
-    try {
-      localStorage.setItem('teen_confessions_list', JSON.stringify(confessions));
-    } catch {
-      // ignore
-    }
-  }, [confessions]);
+    fetchConfessions();
+  }, [fetchConfessions, user?.id]);
+
+  // Refetch confessions when account switch or login/logout events fire
+  useEffect(() => {
+    const handleAccountChange = () => {
+      fetchConfessions();
+    };
+    window.addEventListener('teen_account_changed', handleAccountChange);
+    return () => {
+      window.removeEventListener('teen_account_changed', handleAccountChange);
+    };
+  }, [fetchConfessions]);
 
   // Scroll to top whenever tab changes
   useEffect(() => {
@@ -120,7 +116,11 @@ function AppContent() {
   };
 
   const handleAddConfession = (newConfession: Confession) => {
-    setConfessions([newConfession, ...confessions]);
+    setConfessions((prev) => [newConfession, ...prev.filter(c => c.id !== newConfession.id)]);
+  };
+
+  const handleDeleteConfession = (id: string) => {
+    setConfessions((prev) => prev.filter((c) => c.id !== id));
   };
 
   const handleReactConfession = (id: string, type: 'empathy' | 'meToo') => {
@@ -147,10 +147,14 @@ function AppContent() {
       })
     );
 
-    // Call server API
+    // Call server API with token
+    const token = localStorage.getItem('teen_mind_auth_token') || sessionStorage.getItem('teen_mind_auth_token');
     fetch(`/api/confessions/${id}/react`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
       body: JSON.stringify({ type })
     }).catch(() => {});
   };
@@ -159,9 +163,12 @@ function AppContent() {
     setConfessions((prev) =>
       prev.map((c) => {
         if (c.id !== confessionId) return c;
+        // Avoid duplicate comment id
+        const existing = c.comments || [];
+        if (existing.some(item => item.id === comment.id)) return c;
         return {
           ...c,
-          comments: [...c.comments, comment]
+          comments: [...existing, comment]
         };
       })
     );
@@ -595,7 +602,11 @@ function AppContent() {
             onOpenCreateModal={() => setIsCreateModalOpen(true)}
             onReact={handleReactConfession}
             onAddComment={handleAddComment}
+            onDeleteConfession={handleDeleteConfession}
             currentUserId={user?.id}
+            currentUserRole={(user as any)?.role}
+            isLoading={isConfessionsLoading}
+            onRefresh={fetchConfessions}
           />
         )}
 

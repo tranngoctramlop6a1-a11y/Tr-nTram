@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth, AVATAR_PRESETS } from '../../context/AuthContext';
 import { Plus, Check, ShieldCheck, Upload, AlertCircle } from 'lucide-react';
@@ -6,12 +6,21 @@ import { isImageAvatar, validateAvatarFile, processAndOptimizeAvatar } from '../
 
 export const NicknameModal: React.FC = () => {
   const { user, isNicknameModalOpen, closeNicknameModal, updateProfile } = useAuth();
-  const [nickname, setNickname] = useState(user?.nickname || 'Trâm');
+  const [nickname, setNickname] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState(user?.avatar || '🌸');
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // New account modal always starts with empty nickname and fresh state
+  useEffect(() => {
+    if (isNicknameModalOpen) {
+      setNickname('');
+      setSelectedAvatar(user?.avatar || '🌸');
+      setUploadError(null);
+    }
+  }, [isNicknameModalOpen, user?.avatar]);
 
   if (!isNicknameModalOpen || !user) return null;
 
@@ -100,7 +109,7 @@ export const NicknameModal: React.FC = () => {
                 value={nickname}
                 onChange={(e) => setNickname(e.target.value)}
                 maxLength={30}
-                placeholder="Ví dụ: Trâm, An Nhiên, Mây..."
+                placeholder="Nhập nickname của bạn"
                 className="w-full px-4 py-3 text-sm rounded-2xl border border-gray-200 focus:outline-hidden focus:ring-2 focus:ring-teal-400 font-medium text-gray-800 bg-gray-50/50"
                 required
                 autoFocus

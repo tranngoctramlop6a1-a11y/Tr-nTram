@@ -101,8 +101,10 @@ export type LetterSummary = SelfLetterSummary;
 
 export interface ConfessionCommentRecord {
   id: string;
+  user_id?: string | null;
   author: string;
   author_type: 'user' | 'ai';
+  source?: 'user' | 'ai';
   avatar_seed: string;
   content: string;
   created_at: string;
@@ -111,6 +113,8 @@ export interface ConfessionCommentRecord {
 
 export interface ConfessionRecord {
   id: string;
+  user_id: string | null;
+  source: 'user' | 'ai';
   title: string;
   content: string;
   category: 'Gia đình' | 'Học tập' | 'Tình bạn' | 'Bản thân' | 'Trường học' | 'Tình cảm' | 'Khác';
@@ -120,6 +124,8 @@ export interface ConfessionRecord {
   is_anonymous: boolean;
   created_at: string;
   updated_at: string;
+  visibility: 'public';
+  status: 'active';
   empathy_count: number;
   me_too_count: number;
   comments: ConfessionCommentRecord[];
@@ -313,7 +319,7 @@ class Database {
     // New User creation: require password and hash it
     const { hash, salt } = this.hashPassword(params.password.trim());
     const id = `usr_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
-    const nickname = params.suggestedNickname?.trim() || cleanEmail.split('@')[0] || 'Bạn nhỏ';
+    const nickname = params.suggestedNickname?.trim() || '';
     const avatar = params.suggestedAvatar || '🌱';
 
     const newUser: UserRecord = {
@@ -396,7 +402,7 @@ class Database {
     // Brand new user
     const { hash, salt } = this.hashPassword(params.password);
     const id = `usr_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
-    const nickname = params.nickname?.trim() || cleanEmail.split('@')[0] || 'Bạn nhỏ';
+    const nickname = params.nickname?.trim() || '';
 
     const newUser: UserRecord = {
       id,
@@ -1037,6 +1043,8 @@ class Database {
         const createdAt = new Date(now - (i * 2 + 1) * 3600 * 1000).toISOString();
         this.data.confessions[id] = {
           id,
+          user_id: null,
+          source: 'ai',
           title: post.title,
           content: post.content,
           category: post.category,
@@ -1046,6 +1054,8 @@ class Database {
           is_anonymous: false,
           created_at: createdAt,
           updated_at: createdAt,
+          visibility: 'public',
+          status: 'active',
           empathy_count: post.empathy,
           me_too_count: post.meToo,
           comments: [],
@@ -1053,66 +1063,6 @@ class Database {
           report_count: 0,
           date_key: todayStr
         };
-      });
-
-      // Baseline user posts
-      const baselineUserPosts = [
-        {
-          id: 'user_conf_base_1',
-          title: 'Hôm nay mình đã dũng cảm xin lỗi mẹ trước',
-          content: 'Tối qua hai mẹ con cãi nhau vì mẹ bắt mình tắt máy tính đi ngủ sớm trong khi bài tập chưa xong. Sáng nay tỉnh dậy, thấy mẹ vẫn dậy sớm nấu xôi cho mình. Mình bước lại ôm mẹ và nói: "Con xin lỗi mẹ, tối qua con nói năng hơi hỗn". Mẹ cười và bảo ăn nhanh kẻo nguội. Thật nhẹ nhõm!',
-          category: 'Gia đình' as const,
-          author: 'Tuệ Mẫn',
-          avatar_seed: 'man_tue',
-          empathy_count: 135,
-          me_too_count: 64,
-          hours_ago: 8
-        },
-        {
-          id: 'user_conf_base_2',
-          title: 'Bí kíp nhỏ cho bạn nào đang bị mất tập trung khi ôn thi',
-          content: 'Mỗi lần học bài, mình để điện thoại ở phòng khác và dùng đồng hồ đếm ngược 25 phút (phương pháp Pomodoro). Học hết 25 phút thì đứng dậy vươn vai, uống nước 5 phút. Nhờ vậy mà tuần này mình giải xong hết 3 đề Hóa mà không bị mỏi mắt hay lướt TikTok vô thức nữa!',
-          category: 'Học tập' as const,
-          author: 'Quốc Việt',
-          avatar_seed: 'viet_quoc',
-          empathy_count: 118,
-          me_too_count: 92,
-          hours_ago: 18
-        },
-        {
-          id: 'user_conf_base_3',
-          title: 'Mình học cách chấp nhận rằng mình không thể làm vừa lòng tất cả',
-          content: 'Trước đây ai nhờ gì mình cũng nhận vì sợ bị ghét. Kết quả là mình kiệt sức và luôn lo âu. Tháng này mình bắt đầu từ chối những lời rủ rê mà mình không thích. Hóa ra trời không sập xuống, mà mình lại có thêm thời gian cho chính mình.',
-          category: 'Bản thân' as const,
-          author: 'Ngọc Lan',
-          avatar_seed: 'lan_ngoc',
-          empathy_count: 142,
-          me_too_count: 120,
-          hours_ago: 36
-        }
-      ];
-
-      baselineUserPosts.forEach(bp => {
-        if (!this.data.confessions[bp.id]) {
-          const createdAt = new Date(now - bp.hours_ago * 3600 * 1000).toISOString();
-          this.data.confessions[bp.id] = {
-            id: bp.id,
-            title: bp.title,
-            content: bp.content,
-            category: bp.category,
-            author: bp.author,
-            author_type: 'user',
-            avatar_seed: bp.avatar_seed,
-            is_anonymous: false,
-            created_at: createdAt,
-            updated_at: createdAt,
-            empathy_count: bp.empathy_count,
-            me_too_count: bp.me_too_count,
-            comments: [],
-            user_reactions: {},
-            report_count: 0
-          };
-        }
       });
 
       this.scheduleSave();
@@ -1130,6 +1080,9 @@ class Database {
     this.ensureDailyAiConfessions(todayStr);
 
     let list = Object.values(this.data.confessions || {});
+
+    // Only active and public posts
+    list = list.filter(c => (c.status === undefined || c.status === 'active') && (c.visibility === undefined || c.visibility === 'public'));
 
     // Filter by category
     if (options.category && options.category !== 'Tất cả') {
@@ -1163,25 +1116,31 @@ class Database {
     // Map to client format
     return list.map(c => ({
       id: c.id,
+      userId: c.user_id || null,
+      source: c.source || c.author_type || 'user',
       title: c.title,
       content: c.content,
       category: c.category,
       author: c.author,
-      authorType: c.author_type,
+      authorType: c.author_type || c.source || 'user',
       avatarSeed: c.avatar_seed,
       isAnonymous: c.is_anonymous,
       createdAt: c.created_at,
       updatedAt: c.updated_at,
-      empathyCount: c.empathy_count,
-      meTooCount: c.me_too_count,
+      visibility: c.visibility || 'public',
+      status: c.status || 'active',
+      empathyCount: c.empathy_count || 0,
+      meTooCount: c.me_too_count || 0,
       comments: (c.comments || []).map(cm => ({
         id: cm.id,
+        userId: cm.user_id || null,
         author: cm.author,
-        authorType: cm.author_type,
+        authorType: cm.author_type || cm.source || 'user',
+        source: cm.source || cm.author_type || 'user',
         avatarSeed: cm.avatar_seed,
         content: cm.content,
         createdAt: cm.created_at,
-        likes: cm.likes
+        likes: cm.likes || 0
       })),
       userReacted: options.userId ? (c.user_reactions?.[options.userId] || {}) : {},
       isBookmarked: options.bookmarkedIds?.includes(c.id) || false
@@ -1189,6 +1148,8 @@ class Database {
   }
 
   public createConfession(data: {
+    userId?: string | null;
+    source?: 'user' | 'ai';
     title: string;
     content: string;
     category: any;
@@ -1200,24 +1161,28 @@ class Database {
     if (!this.data.confessions) {
       this.data.confessions = {};
     }
-    const id = 'conf_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 6);
+    const id = 'post_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
     const now = new Date().toISOString();
 
     const record: ConfessionRecord = {
       id,
+      user_id: data.userId || null,
+      source: data.source || data.authorType || 'user',
       title: data.title.trim(),
       content: data.content.trim(),
       category: data.category || 'Khác',
-      author: data.isAnonymous ? 'Bạn ẩn danh' : (data.author?.trim() || 'Người bạn nhỏ'),
+      author: data.isAnonymous ? (data.author?.trim() || 'Bạn nhỏ ẩn danh') : (data.author?.trim() || 'Thành viên'),
       author_type: data.authorType || 'user',
       avatar_seed: data.avatarSeed || ('user_' + Math.random().toString(36).substring(2, 6)),
       is_anonymous: !!data.isAnonymous,
       created_at: now,
       updated_at: now,
+      visibility: 'public',
+      status: 'active',
       empathy_count: 1, // Author's initial feeling
       me_too_count: 0,
       comments: [],
-      user_reactions: {},
+      user_reactions: data.userId ? { [data.userId]: { empathy: true } } : {},
       report_count: 0,
       date_key: now.split('T')[0]
     };
@@ -1225,6 +1190,19 @@ class Database {
     this.data.confessions[id] = record;
     this.scheduleSave();
     return record;
+  }
+
+  public deleteConfession(id: string, userId: string, isAdmin = false): { success: boolean; error?: string } {
+    if (!this.data.confessions || !this.data.confessions[id]) {
+      return { success: false, error: 'Không tìm thấy bài viết.' };
+    }
+    const conf = this.data.confessions[id];
+    if (!isAdmin && conf.user_id && conf.user_id !== userId) {
+      return { success: false, error: 'Bạn không có quyền xóa bài viết này.' };
+    }
+    delete this.data.confessions[id];
+    this.scheduleSave();
+    return { success: true };
   }
 
   public reactConfession(id: string, reactorId: string, type: 'empathy' | 'meToo'): { success: boolean; record?: any } {
@@ -1267,8 +1245,10 @@ class Database {
   }
 
   public addConfessionComment(id: string, comment: {
+    userId?: string | null;
     author: string;
     authorType?: 'user' | 'ai';
+    source?: 'user' | 'ai';
     avatarSeed?: string;
     content: string;
   }): { success: boolean; comment?: any } {
@@ -1280,8 +1260,10 @@ class Database {
 
     const newComm: ConfessionCommentRecord = {
       id: 'comm_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 6),
+      user_id: comment.userId || null,
       author: comment.author.trim() || 'Người bạn ẩn danh',
       author_type: comment.authorType || 'user',
+      source: comment.source || comment.authorType || 'user',
       avatar_seed: comment.avatarSeed || 'commenter_seed',
       content: comment.content.trim(),
       created_at: new Date().toISOString(),

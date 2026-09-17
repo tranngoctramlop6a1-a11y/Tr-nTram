@@ -55,12 +55,16 @@ export const JournalView: React.FC<JournalViewProps> = ({
   initialPromptText
 }) => {
   const { user, token } = useAuth();
-  const storagePrefix = user ? `teen_journal_${user.id}_` : 'teen_journal_';
+  const isLoggedIn = Boolean(user && user.id && user.id !== 'guest');
+  const storagePrefix = isLoggedIn ? `teen_journal_${user!.id}_` : 'teen_journal_';
 
-  // 1. Storage & State for Journal Entries
+  // 1. Storage & State for Journal Entries - ONLY loaded from localStorage if logged in
   const [entries, setEntries] = useState<JournalEntry[]>(() => {
+    if (!user || !user.id || user.id === 'guest') {
+      return [];
+    }
     try {
-      const key = user ? `teen_journal_${user.id}_entries` : 'teen_journal_entries';
+      const key = `teen_journal_${user.id}_entries`;
       const stored = localStorage.getItem(key);
       if (stored) {
         const parsed = JSON.parse(stored);
@@ -79,10 +83,13 @@ export const JournalView: React.FC<JournalViewProps> = ({
     return [];
   });
 
-  // 2. Storage & State for Time Capsules
+  // 2. Storage & State for Time Capsules - ONLY loaded from localStorage if logged in
   const [capsules, setCapsules] = useState<TimeCapsule[]>(() => {
+    if (!user || !user.id || user.id === 'guest') {
+      return [];
+    }
     try {
-      const key = user ? `teen_journal_${user.id}_capsules` : 'teen_journal_capsules';
+      const key = `teen_journal_${user.id}_capsules`;
       const stored = localStorage.getItem(key);
       if (stored) {
         const parsed = JSON.parse(stored);
@@ -98,9 +105,18 @@ export const JournalView: React.FC<JournalViewProps> = ({
 
   // Switch journal entries & PIN whenever user identity changes (Login / Logout / Account Switch)
   useEffect(() => {
-    const keyEntries = user ? `teen_journal_${user.id}_entries` : 'teen_journal_entries';
-    const keyCapsules = user ? `teen_journal_${user.id}_capsules` : 'teen_journal_capsules';
-    const keyPin = user ? `teen_journal_${user.id}_pin` : 'teen_journal_pin';
+    if (!user || !user.id || user.id === 'guest') {
+      // Guest mode: all temporary entries are reset on page reload/switch, never loaded from localStorage
+      setEntries([]);
+      setCapsules([]);
+      setPin(null);
+      setIsUnlocked(true);
+      return;
+    }
+
+    const keyEntries = `teen_journal_${user.id}_entries`;
+    const keyCapsules = `teen_journal_${user.id}_capsules`;
+    const keyPin = `teen_journal_${user.id}_pin`;
 
     let loadedEntries: JournalEntry[] = [];
     let loadedCapsules: TimeCapsule[] = [];
@@ -119,7 +135,7 @@ export const JournalView: React.FC<JournalViewProps> = ({
     setIsUnlocked(!loadedPin);
 
     // If user is authenticated, fetch latest from server
-    if (token && user) {
+    if (token && user.id && user.id !== 'guest') {
       let isCurrent = true;
       fetch('/api/journal/my', {
         headers: { Authorization: `Bearer ${token}` }
@@ -146,25 +162,30 @@ export const JournalView: React.FC<JournalViewProps> = ({
 
   // 3. PIN Security
   const [pin, setPin] = useState<string | null>(() => {
-    const key = user ? `teen_journal_${user.id}_pin` : 'teen_journal_pin';
+    if (!user || !user.id || user.id === 'guest') {
+      return null;
+    }
+    const key = `teen_journal_${user.id}_pin`;
     return localStorage.getItem(key) || null;
   });
   const [isUnlocked, setIsUnlocked] = useState<boolean>(() => !pin);
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
 
-  // Sync to localStorage & server
+  // Sync to localStorage & server (STRICT: Guest mode never writes to localStorage)
   useEffect(() => {
+    if (!user?.id || user.id === 'guest') {
+      // In Guest Mode: Entries remain in React memory for current session only.
+      // Absolute restriction: DO NOT save to localStorage!
+      return;
+    }
+
     try {
-      const key = user ? `teen_journal_${user.id}_entries` : 'teen_journal_entries';
+      const key = `teen_journal_${user.id}_entries`;
       localStorage.setItem(key, JSON.stringify(entries));
-      if (!user) {
-        // Also keep updated for guest migration
-        localStorage.setItem('teen_journal_entries', JSON.stringify(entries));
-      }
     } catch {}
 
     // Cloud sync if logged in
-    if (token && user) {
+    if (token && user.id && user.id !== 'guest') {
       const timer = setTimeout(() => {
         fetch('/api/journal/sync', {
           method: 'POST',
@@ -180,15 +201,18 @@ export const JournalView: React.FC<JournalViewProps> = ({
   }, [entries, user?.id, token]);
 
   useEffect(() => {
+    if (!user?.id || user.id === 'guest') {
+      // In Guest Mode: Capsules remain in React memory for current session only.
+      // Absolute restriction: DO NOT save to localStorage!
+      return;
+    }
+
     try {
-      const key = user ? `teen_journal_${user.id}_capsules` : 'teen_journal_capsules';
+      const key = `teen_journal_${user.id}_capsules`;
       localStorage.setItem(key, JSON.stringify(capsules));
-      if (!user) {
-        localStorage.setItem('teen_journal_capsules', JSON.stringify(capsules));
-      }
     } catch {}
 
-    if (token && user) {
+    if (token && user.id && user.id !== 'guest') {
       const timer = setTimeout(() => {
         fetch('/api/journal/sync', {
           method: 'POST',
@@ -205,7 +229,11 @@ export const JournalView: React.FC<JournalViewProps> = ({
 
   const handleSetPin = (newPin: string | null) => {
     setPin(newPin);
-    const key = user ? `teen_journal_${user.id}_pin` : 'teen_journal_pin';
+    if (!user?.id || user.id === 'guest') {
+      // Guest mode does not persist PIN across reloads
+      return;
+    }
+    const key = `teen_journal_${user.id}_pin`;
     if (newPin) {
       localStorage.setItem(key, newPin);
     } else {
@@ -450,6 +478,21 @@ export const JournalView: React.FC<JournalViewProps> = ({
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-8 animate-in fade-in duration-300">
+
+      {/* Guest Mode Notice Banner */}
+      {!isLoggedIn && (
+        <div className="p-4 rounded-2xl bg-[#FFF8EE] border border-[#F0DFCD] text-[#7A4B2A] text-xs sm:text-sm flex items-start sm:items-center justify-between gap-3 shadow-2xs">
+          <div className="flex items-start sm:items-center gap-2.5">
+            <span className="text-xl shrink-0">🍃</span>
+            <div className="leading-relaxed">
+              <strong className="font-serif font-bold text-[#5A351D]">Bạn đang ở Chế độ khách:</strong>{' '}
+              <span className="text-[#6E472D]">
+                Mọi trang nhật ký viết trong phiên này chỉ lưu tạm thời trong bộ nhớ và sẽ được làm mới sạch sẽ khi bạn tải lại trang (F5) hoặc thoát ra. Hãy đăng nhập tài khoản chính thức để lưu trữ bền vững vào sổ tay nhé!
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 1. Header Hero Card with Daily Quote */}
       <div className="relative overflow-hidden bg-gradient-to-br from-rose-100/70 via-amber-50/70 to-emerald-50/60 rounded-3xl p-6 sm:p-8 border border-rose-200/80 shadow-xs">

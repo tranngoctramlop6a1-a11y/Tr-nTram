@@ -144,6 +144,9 @@ export function toggleConfessionBookmark(userId: string | undefined, confessionI
 }
 
 export function getUserProgress(userId?: string): UserProgressData {
+  if (!userId || userId === 'guest') {
+    return { ...DEFAULT_PROGRESS };
+  }
   try {
     const raw = localStorage.getItem(getProgressKey(userId));
     if (raw) {
@@ -160,6 +163,15 @@ export function getUserProgress(userId?: string): UserProgressData {
 }
 
 export function saveUserProgress(userId: string | undefined, data: Partial<UserProgressData>): UserProgressData {
+  // STRICT GUEST CHECK: Guest mode never writes to localStorage
+  if (!userId || userId === 'guest') {
+    return {
+      ...DEFAULT_PROGRESS,
+      ...data,
+      updatedAt: new Date().toISOString()
+    };
+  }
+
   const current = getUserProgress(userId);
   const updated: UserProgressData = {
     ...current,
@@ -388,4 +400,66 @@ export async function migrateAllGuestDataToUser(userId: string, tokenParam?: str
 export function clearCurrentSessionState(): void {
   // Dispatch event so all views immediately reset their memory state to guest/blank
   window.dispatchEvent(new CustomEvent('teen_account_changed', { detail: { type: 'logout' } }));
+}
+
+/**
+ * Purges all transient guest keys from localStorage to ensure Guest Mode never leaks
+ * or persists after page refresh (F5) or browser exit.
+ */
+export function clearAllGuestLocalStorage(): void {
+  try {
+    const guestKeys = [
+      'teen_journal_entries',
+      'teen_journal_capsules',
+      'teen_journal_pin',
+      'teen_journal_drafts',
+      'teen_journal_entries_v1',
+      'teen_journal_draft_v1',
+      'self_letters_list_guest',
+      'self_letter_draft_guest',
+      'teen_plant_guest_full_state',
+      'teen_plant_guest_seeds',
+      'teen_guest_progress',
+      'teen_user_progress_guest',
+      'teen_mood_history_guest'
+    ];
+    guestKeys.forEach(k => {
+      try {
+        localStorage.removeItem(k);
+      } catch {}
+    });
+
+    // Remove any guest letters from master backup
+    const backupRaw = localStorage.getItem('self_letters_master_backup');
+    if (backupRaw) {
+      try {
+        const parsed = JSON.parse(backupRaw);
+        if (Array.isArray(parsed)) {
+          const cleaned = parsed.filter((l: any) => l.sender_id && l.sender_id !== 'guest');
+          localStorage.setItem('self_letters_master_backup', JSON.stringify(cleaned));
+        }
+      } catch {}
+    }
+
+    // Dynamic clean for any remaining guest keys
+    const toRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (
+        key &&
+        (key.startsWith('teen_daily_scen_guest_') ||
+         key.includes('_guest_') ||
+         key.endsWith('_guest'))
+      ) {
+        toRemove.push(key);
+      }
+    }
+    toRemove.forEach(k => {
+      try {
+        localStorage.removeItem(k);
+      } catch {}
+    });
+  } catch (e) {
+    console.warn('Failed to clear guest localStorage:', e);
+  }
 }

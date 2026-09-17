@@ -263,6 +263,11 @@ export const getDraftStorageKey = (userId?: string) => `self_letter_draft_${user
 export const ALL_LETTERS_BACKUP_KEY = 'self_letters_all_master_backup';
 
 export function loadStoredLetters(userId?: string): SelfLetterRecord[] {
+  // STRICT GUEST RESTRICTION: In Guest Mode, never read from localStorage
+  if (!userId || userId === 'guest') {
+    return [];
+  }
+
   try {
     const primaryKey = getLettersStorageKey(userId);
     const primaryRaw = localStorage.getItem(primaryKey);
@@ -284,41 +289,14 @@ export function loadStoredLetters(userId?: string): SelfLetterRecord[] {
           list.forEach(l => map.set(l.id, l));
           backupList.forEach(l => {
             if (!map.has(l.id)) {
-              if (userId) {
-                if (l.sender_id === userId || !l.sender_id) {
-                  map.set(l.id, l);
-                }
-              } else {
-                if (!l.sender_id) {
-                  map.set(l.id, l);
-                }
+              if (l.sender_id === userId || !l.sender_id) {
+                map.set(l.id, l);
               }
             }
           });
           list = Array.from(map.values());
         }
       } catch (e) {}
-    }
-
-    // Auto-migrate guest letters if logged in
-    if (userId && userId !== 'guest') {
-      const guestRaw = localStorage.getItem(getLettersStorageKey('guest'));
-      if (guestRaw) {
-        try {
-          const guestList: SelfLetterRecord[] = JSON.parse(guestRaw);
-          if (Array.isArray(guestList) && guestList.length > 0) {
-            const map = new Map<string, SelfLetterRecord>();
-            list.forEach(l => map.set(l.id, l));
-            guestList.forEach(g => {
-              if (!map.has(g.id)) {
-                map.set(g.id, { ...g, sender_id: userId });
-              }
-            });
-            list = Array.from(map.values());
-            localStorage.setItem(primaryKey, JSON.stringify(list));
-          }
-        } catch (e) {}
-      }
     }
 
     list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -330,6 +308,11 @@ export function loadStoredLetters(userId?: string): SelfLetterRecord[] {
 }
 
 export function saveStoredLetters(userId: string | undefined, list: SelfLetterRecord[]) {
+  // STRICT GUEST RESTRICTION: In Guest Mode, never write to localStorage
+  if (!userId || userId === 'guest') {
+    return;
+  }
+
   try {
     const primaryKey = getLettersStorageKey(userId);
     localStorage.setItem(primaryKey, JSON.stringify(list));
@@ -353,6 +336,10 @@ export function saveStoredLetters(userId: string | undefined, list: SelfLetterRe
 }
 
 export function removeStoredLetter(userId: string | undefined, id: string) {
+  if (!userId || userId === 'guest') {
+    return;
+  }
+
   try {
     const primaryKey = getLettersStorageKey(userId);
     const existing = loadStoredLetters(userId);
@@ -450,6 +437,7 @@ export const SelfLettersView: React.FC = () => {
   const [viewingLetter, setViewingLetter] = useState<SelfLetterRecord | null>(null);
   const [readingLoading, setReadingLoading] = useState(false);
   const [unfoldingStep, setUnfoldingStep] = useState<'closed' | 'flap_opening' | 'paper_sliding' | 'open'>('closed');
+  const sessionLettersRef = useRef<Map<string, SelfLetterRecord>>(new Map());
 
   // Deletion State
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -468,9 +456,16 @@ export const SelfLettersView: React.FC = () => {
 
   // Fetch summaries with instant localStorage fallback and merge
   const fetchSummaries = useCallback(async () => {
+    // STRICT GUEST ISOLATION: In guest mode, do not load from localStorage or server on initial page load
+    if (!user?.id || user.id === 'guest') {
+      setLetters([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     // 1. Immediately hydrate from localStorage so user never loses letters on F5 or tab switch
-    const localRecords = loadStoredLetters(user?.id);
+    const localRecords = loadStoredLetters(user.id);
     if (localRecords.length > 0) {
       setLetters(localRecords.map(r => recordToSummary(r)));
     }
@@ -484,7 +479,7 @@ export const SelfLettersView: React.FC = () => {
       const data = await res.json();
       if (data.success && Array.isArray(data.summaries)) {
         // Merge remote summaries with local records
-        const currentLocal = loadStoredLetters(user?.id);
+        const currentLocal = loadStoredLetters(user.id);
         const mapById = new Map<string, SelfLetterSummary>();
 
         for (const s of data.summaries) {
@@ -521,8 +516,9 @@ export const SelfLettersView: React.FC = () => {
 
   // Restore unsaved draft from localStorage if present
   useEffect(() => {
+    if (!user?.id || user.id === 'guest') return;
     try {
-      const rawDraft = localStorage.getItem(getDraftStorageKey(user?.id));
+      const rawDraft = localStorage.getItem(getDraftStorageKey(user.id));
       if (rawDraft) {
         const d = JSON.parse(rawDraft);
         if (d && (d.title || d.content || (d.placedStickers && d.placedStickers.length > 0))) {
@@ -545,6 +541,7 @@ export const SelfLettersView: React.FC = () => {
   // Auto-save draft on user edits
   useEffect(() => {
     if (!isCreating) return;
+    if (!user?.id || user.id === 'guest') return; // STRICT: never save draft to localStorage in guest mode!
     if (!title && !content && placedStickers.length === 0 && !customBgColor) return;
 
     const draftObj = {
@@ -561,7 +558,7 @@ export const SelfLettersView: React.FC = () => {
       placedStickers
     };
     try {
-      localStorage.setItem(getDraftStorageKey(user?.id), JSON.stringify(draftObj));
+      localStorage.setItem(getDraftStorageKey(user.id), JSON.stringify(draftObj));
     } catch (e) {}
   }, [isCreating, title, content, senderName, receiverName, paperStyle, customBgColor, inkColor, fontFamily, waxSeal, openDate, placedStickers, user?.id]);
 
@@ -884,52 +881,60 @@ export const SelfLettersView: React.FC = () => {
       opened_at: null
     };
 
-    // Save to localStorage under current account userId & master backup
-    const currentStored = loadStoredLetters(user?.id);
-    const updatedStored = [newLetterRecord, ...currentStored.filter(l => l.id !== tempId)];
-    saveStoredLetters(user?.id, updatedStored);
+    // Save to session in-memory map
+    sessionLettersRef.current.set(newLetterRecord.id, newLetterRecord);
 
-    // Clear draft from localStorage
-    try {
-      localStorage.removeItem(getDraftStorageKey(user?.id));
-    } catch (e) {}
+    // Save to localStorage ONLY under official logged-in account
+    if (user?.id && user.id !== 'guest') {
+      const currentStored = loadStoredLetters(user.id);
+      const updatedStored = [newLetterRecord, ...currentStored.filter(l => l.id !== tempId)];
+      saveStoredLetters(user.id, updatedStored);
+
+      // Clear draft from localStorage
+      try {
+        localStorage.removeItem(getDraftStorageKey(user.id));
+      } catch (e) {}
+    }
 
     // Update React state immediately so the envelope appears in mailbox
     setLetters(prev => [recordToSummary(newLetterRecord), ...prev.filter(l => l.id !== tempId)]);
 
-    // 2. CONCURRENT SERVER POST
+    // 2. CONCURRENT SERVER POST (Only when authenticated)
     try {
-      const res = await fetch('/api/letters', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: token } : {})
-        },
-        body: JSON.stringify({
-          title: newLetterRecord.title,
-          content: newLetterRecord.content,
-          sender_name: newLetterRecord.sender_name,
-          receiver_name: newLetterRecord.receiver_name,
-          paper_style: newLetterRecord.paper_style,
-          ink_color: newLetterRecord.ink_color,
-          font_family: newLetterRecord.font_family,
-          drawing_data: newLetterRecord.drawing_data,
-          open_date: newLetterRecord.open_date,
-          wax_seal: newLetterRecord.wax_seal,
-          stickers_data: newLetterRecord.stickers_data,
-          theme_color: newLetterRecord.theme_color
-        })
-      });
+      if (user?.id && user.id !== 'guest') {
+        const res = await fetch('/api/letters', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: token } : {})
+          },
+          body: JSON.stringify({
+            title: newLetterRecord.title,
+            content: newLetterRecord.content,
+            sender_name: newLetterRecord.sender_name,
+            receiver_name: newLetterRecord.receiver_name,
+            paper_style: newLetterRecord.paper_style,
+            ink_color: newLetterRecord.ink_color,
+            font_family: newLetterRecord.font_family,
+            drawing_data: newLetterRecord.drawing_data,
+            open_date: newLetterRecord.open_date,
+            wax_seal: newLetterRecord.wax_seal,
+            stickers_data: newLetterRecord.stickers_data,
+            theme_color: newLetterRecord.theme_color
+          })
+        });
 
-      const data = await res.json();
-      if (res.ok && data?.success && data?.letter?.id) {
-        // Sync server-assigned ID into localStorage and state
-        const serverId = data.letter.id;
-        newLetterRecord.id = serverId;
-        const latestStored = loadStoredLetters(user?.id);
-        const reSynced = [newLetterRecord, ...latestStored.filter(l => l.id !== tempId && l.id !== serverId)];
-        saveStoredLetters(user?.id, reSynced);
-        setLetters(prev => [recordToSummary(newLetterRecord), ...prev.filter(l => l.id !== tempId && l.id !== serverId)]);
+        const data = await res.json();
+        if (res.ok && data?.success && data?.letter?.id) {
+          // Sync server-assigned ID into localStorage and state
+          const serverId = data.letter.id;
+          newLetterRecord.id = serverId;
+          sessionLettersRef.current.set(serverId, newLetterRecord);
+          const latestStored = loadStoredLetters(user.id);
+          const reSynced = [newLetterRecord, ...latestStored.filter(l => l.id !== tempId && l.id !== serverId)];
+          saveStoredLetters(user.id, reSynced);
+          setLetters(prev => [recordToSummary(newLetterRecord), ...prev.filter(l => l.id !== tempId && l.id !== serverId)]);
+        }
       }
     } catch (err: unknown) {
       console.warn('Network sync warning (data is safely persisted locally):', err);
@@ -994,9 +999,9 @@ export const SelfLettersView: React.FC = () => {
     setReadingLoading(true);
     setUnfoldingStep('closed');
 
-    // 1. Check localStorage first for instant reading
+    // 1. Check localStorage or in-memory session first for instant reading
     const localRecords = loadStoredLetters(user?.id);
-    const localMatch = localRecords.find(l => l.id === letterSummary.id);
+    const localMatch = localRecords.find(l => l.id === letterSummary.id) || sessionLettersRef.current.get(letterSummary.id);
     if (localMatch) {
       const openedMatch: SelfLetterRecord = {
         ...localMatch,
@@ -1004,17 +1009,30 @@ export const SelfLettersView: React.FC = () => {
         opened_at: localMatch.opened_at || new Date().toISOString()
       };
       setViewingLetter(openedMatch);
-      // Update local storage so opened status persists across reloads
-      const updatedList = localRecords.map(l => l.id === letterSummary.id ? openedMatch : l);
-      saveStoredLetters(user?.id, updatedList);
+      sessionLettersRef.current.set(letterSummary.id, openedMatch);
+      // Update local storage ONLY if user is logged in
+      if (user?.id && user.id !== 'guest') {
+        const updatedList = localRecords.map(l => l.id === letterSummary.id ? openedMatch : l);
+        saveStoredLetters(user.id, updatedList);
+      }
       setLetters(prev => prev.map(s => s.id === letterSummary.id ? { ...s, is_opened: true, opened_at: openedMatch.opened_at } : s));
 
       setUnfoldingStep('flap_opening');
       setTimeout(() => setUnfoldingStep('paper_sliding'), 450);
       setTimeout(() => setUnfoldingStep('open'), 950);
+
+      if (!user?.id || user.id === 'guest') {
+        setReadingLoading(false);
+        return;
+      }
     }
 
-    // 2. Sync with server for full details and mark as opened
+    // 2. Sync with server for full details and mark as opened (only for logged in users)
+    if (!user?.id || user.id === 'guest') {
+      setReadingLoading(false);
+      return;
+    }
+
     try {
       const res = await fetch(`/api/letters/${letterSummary.id}`, {
         headers: {
@@ -1047,11 +1065,12 @@ export const SelfLettersView: React.FC = () => {
           paper_style: data.letter.paper_style || localMatch?.paper_style
         };
         setViewingLetter(mergedLetter);
+        sessionLettersRef.current.set(letterSummary.id, mergedLetter);
 
         // Update local records with server confirmed data
-        const currentList = loadStoredLetters(user?.id);
+        const currentList = loadStoredLetters(user.id);
         const nextList = currentList.map(l => l.id === letterSummary.id ? mergedLetter : l);
-        saveStoredLetters(user?.id, nextList);
+        saveStoredLetters(user.id, nextList);
 
         if (!localMatch) {
           setUnfoldingStep('flap_opening');
@@ -1169,6 +1188,13 @@ export const SelfLettersView: React.FC = () => {
           </div>
         </div>
       </header>
+
+      {/* Guest Mode Notice Banner */}
+      {(!user || !user.id || user.id === 'guest') && (
+        <div className="bg-[#FFF8EE] border-b border-[#F0DFCD] text-[#7A4B2A] py-2.5 px-4 sm:px-6 text-xs text-center shadow-2xs">
+          <span className="font-serif font-bold text-[#5A351D]">Chế độ khách:</span> Lá thư, nét vẽ tay và tem dán bạn tạo trong phiên này chỉ hiển thị tạm thời trong bộ nhớ và sẽ được làm mới sạch sẽ khi tải lại trang (F5). Hãy đăng nhập tài khoản chính thức để niêm phong và lưu giữ lá thư vĩnh viễn nhé! 💌
+        </div>
+      )}
 
       {/* Main Container */}
       <main className="max-w-5xl mx-auto px-4 sm:px-6 pt-8">

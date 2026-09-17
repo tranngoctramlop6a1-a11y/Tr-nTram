@@ -218,8 +218,10 @@ export interface MoodOption {
 
 export interface Comment {
   id: string;
+  userId?: string | null;
   author: string;
   authorType?: 'user' | 'ai';
+  source?: 'user' | 'ai';
   avatarSeed: string;
   content: string;
   timestamp?: string;
@@ -229,6 +231,8 @@ export interface Comment {
 
 export interface Confession {
   id: string;
+  userId?: string | null;
+  source?: 'user' | 'ai';
   title: string;
   content: string;
   category: 'Gia đình' | 'Học tập' | 'Tình bạn' | 'Bản thân' | 'Trường học' | 'Tình cảm' | 'Khác';
@@ -248,6 +252,8 @@ export interface Confession {
   };
   isBookmarked?: boolean;
   reportCount?: number;
+  visibility?: 'public';
+  status?: 'active';
 }
 
 export interface ScenarioOption {

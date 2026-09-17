@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { JournalEntry, JournalTheme, JournalMessageItem, JournalImageItem } from '../../types';
+import { useAuth } from '../../context/AuthContext';
 import { 
   JOURNAL_MOODS, 
   JOURNAL_STICKERS, 
@@ -61,6 +62,10 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
   onDeleteEntry,
   onAskChatbotWithText
 }) => {
+  const { user } = useAuth();
+  const userId = user?.id;
+  const isGuest = !userId || userId === 'guest';
+
   // Primary diary data states
   const [content, setContent] = useState('');
   const [messages, setMessages] = useState<JournalMessageItem[]>([]);
@@ -147,7 +152,7 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
       prevDateRef.current = dateStr;
 
       // 1. Check local draft
-      const draft = getJournalDraft(dateStr);
+      const draft = getJournalDraft(dateStr, userId);
 
       if (draft && (draft.content?.trim() || draft.title?.trim() || draft.mood || (draft.messages && draft.messages.length > 0) || (draft.images && draft.images.length > 0))) {
         const rawContent = draft.content || '';
@@ -274,7 +279,7 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
     const effectiveImages = newImages ?? images;
     const effectiveUnlock = newUnlock ?? newReadLater ?? unlockDate ?? readLaterDate;
 
-    // 1. Instant sync to localStorage draft
+    // 1. Instant sync to localStorage draft (skipped if in guest mode)
     saveJournalDraft(dateStr, {
       content: newContent,
       messages: newMessages,
@@ -289,7 +294,7 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
       unlockDate: effectiveUnlock,
       reflectionNote: newReflection ?? reflectionNote,
       isFavorite: typeof newFav === 'boolean' ? newFav : isFavorite
-    });
+    }, userId);
 
     if (!newContent.trim() && !newTitle.trim() && !newMood && newMessages.length === 0 && effectiveImages.length === 0) {
       setSaveStatus('idle');
@@ -550,7 +555,7 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
         isFavorite: isFavorite
       };
       onSaveEntry(updated);
-      clearJournalDraft(dateStr);
+      clearJournalDraft(dateStr, userId);
     }
     onClose();
   };
@@ -576,7 +581,7 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
         reflectionNote,
         isFavorite,
         updatedAt: new Date().toISOString()
-      });
+      }, userId);
 
       const nowIso = new Date().toISOString();
       const updated: JournalEntry = {
@@ -637,6 +642,11 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
                   Đang thêm ảnh...
                 </span>
+              ) : isGuest ? (
+                <span className="text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                  Chế độ khách (tạm thời)
+                </span>
               ) : saveStatus === 'saving' ? (
                 <span className="text-amber-600 flex items-center gap-1 animate-pulse">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
@@ -671,6 +681,16 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Guest Mode Notice Banner */}
+        {isGuest && (
+          <div className="px-5 py-2.5 bg-[#FFF8EE] border-b border-[#F0DFCD] text-[#7A4B2A] text-xs flex items-center gap-2">
+            <span className="text-sm shrink-0">🍃</span>
+            <span className="leading-relaxed">
+              <strong className="font-serif font-bold text-[#5A351D]">Chế độ khách:</strong> Thao tác viết nhật ký chỉ lưu tạm thời trong phiên này và sẽ tự làm mới khi tải lại (F5). Hãy đăng nhập để lưu trữ bền vững vào sổ tay nhé!
+            </span>
+          </div>
+        )}
 
         {/* Scrollable Diary Body */}
         <div className="p-5 sm:p-7 overflow-y-auto space-y-6 flex-1">
@@ -1248,7 +1268,7 @@ export const JournalEditorModal: React.FC<JournalEditorModalProps> = ({
                     if (existingEntry) {
                       onDeleteEntry(existingEntry.id);
                     }
-                    clearJournalDraft(dateStr);
+                    clearJournalDraft(dateStr, userId);
                     setShowDeleteConfirm(false);
                     onClose();
                   }}
